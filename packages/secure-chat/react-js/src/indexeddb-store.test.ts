@@ -7,6 +7,7 @@ const bytes = (...xs: number[]) => new Uint8Array(xs);
 describe("createIndexedDBStore", () => {
   it("round-trips, lists by prefix, and deletes", async () => {
     const store = createIndexedDBStore({ dbName: "t1" });
+    expect(await store.get("never-set")).toBeNull();
     await store.set("group:a", bytes(1, 2, 3));
     await store.set("group:b", bytes(4));
     await store.set("device", bytes(9));

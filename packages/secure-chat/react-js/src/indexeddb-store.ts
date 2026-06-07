@@ -31,6 +31,8 @@ function openDb(dbName: string, storeName: string): Promise<IDBDatabase> {
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
+    req.onblocked = () =>
+      reject(new Error("IndexedDB open blocked by an existing connection — close other tabs and retry."));
   });
 }
 
@@ -65,7 +67,11 @@ export function createIndexedDBStore(opts: IndexedDBStoreOptions = {}): SecureCh
   const dbName = opts.dbName ?? "agora-secure-chat";
   const storeName = opts.storeName ?? "kv";
   let dbPromise: Promise<IDBDatabase> | null = null;
-  const db = () => (dbPromise ??= openDb(dbName, storeName));
+  const db = () =>
+    (dbPromise ??= openDb(dbName, storeName).catch((e) => {
+      dbPromise = null; // don't cache a rejection — allow a retry on the next call
+      throw e;
+    }));
 
   return {
     async get(key) {
