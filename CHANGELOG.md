@@ -36,6 +36,12 @@ All notable changes to Agora SDK Plus are documented here, following
   `*.test.ts(x)` excluded from every package's `tsc` build. First tests: `base64` wire-boundary
   round-trips (`@agora-sdk/secure-chat-core`) and a two-party `MockSecureChatCrypto` DM flow incl.
   plaintext-hiding + passphrase backup/restore (`@agora-sdk/secure-chat-crypto`).
+- `ARCHITECTURE.md` — visual companion to CLAUDE.md: mermaid package graph, layers/seams, and
+  runtime sequence flows (start-DM, send/receive, persistence). Cross-linked from CLAUDE.md + README.
+- Design spec for the Phase 2 persistence layer (`docs/superpowers/specs/2026-06-06-secure-chat-persistence-design.md`),
+  with mermaid wiring + reload-survive diagrams — generic key→blob store seam, typed repository,
+  provider-injected store with a cached `resolveGroup`, and an `exportDeviceState`/`importDeviceState`
+  addition to the crypto seam.
 - **GitHub Actions** — `.github/workflows/ci.yml` (typecheck + test + build-all on push to `main`
   and all PRs, Node 20 & 22) and `.github/workflows/publish.yml` (on a `v*` tag: re-run the CI gate,
   then `pnpm -r publish` all packages with provenance; dist-tag by suffix — `vX.Y.Z` → `latest`,

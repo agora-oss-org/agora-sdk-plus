@@ -37,6 +37,10 @@ internals from here.
 
 ## Architecture
 
+> 📐 For the **visual** view — package graph, layers/seams, and runtime sequence flows — see
+> [`ARCHITECTURE.md`](ARCHITECTURE.md). This section stays the prose source of truth; the diagrams
+> defer to it.
+
 The repo ships feature-grouped packages, each mirroring agora-sdk's **core + platform** shape so the
 SDKs feel identical to consumers:
 

@@ -123,6 +123,30 @@ restores `this.identity` + `this.privateState` and returns the `DeviceIdentity`.
 
 ## Provider, resolver & hook integration
 
+```mermaid
+flowchart TD
+  store["SecureChatStore<br/>(MemoryStore | IndexedDB)"]
+  provider["SecureChatProvider"]
+  repo["SecureChatRepository"]
+  resolve["resolveGroup / rememberGroup<br/>+ GroupHandle cache"]
+  crypto["SecureChatCrypto"]
+  dev["useSecureDevice"]
+  conv["useSecureConversations"]
+  msg["useSecureMessages"]
+
+  store --> provider
+  provider --> repo
+  provider --> resolve
+  repo --> store
+  resolve --> repo
+  resolve --> crypto
+  dev --> repo
+  dev --> crypto
+  conv --> resolve
+  msg --> resolve
+  msg --> repo
+```
+
 ### Provider
 
 `SecureChatProvider` gains one optional prop:
@@ -172,6 +196,34 @@ Becomes self-sufficient; both options remain as advanced overrides.
 - **`senderDeviceId`**: `options.senderDeviceId` if passed, else the persisted device row id
   (`repo.loadDevice()` → `device.id`).
 - The common path needs neither option once the store is wired.
+
+### Reload-survive flow
+
+```mermaid
+sequenceDiagram
+  participant App
+  participant Dev as useSecureDevice
+  participant Msg as useSecureMessages
+  participant Repo as SecureChatRepository
+  participant Crypto as SecureChatCrypto
+  participant Store as IndexedDB
+
+  Note over App: page reload
+  App->>Dev: mount
+  Dev->>Repo: loadDevice()
+  Repo->>Store: get("device")
+  Store-->>Repo: bytes
+  Repo-->>Dev: PersistedDevice
+  Dev->>Crypto: importDeviceState(deviceState)
+  Crypto-->>Dev: DeviceIdentity (re-hydrated)
+  App->>Msg: useSecureMessages(convId)
+  Msg->>Repo: resolveGroup → loadGroupState(convId)
+  Repo->>Store: get("group:convId")
+  Store-->>Repo: bytes
+  Repo->>Crypto: importGroupState(bytes)
+  Crypto-->>Msg: GroupHandle (cached)
+  Note over Msg: messages decrypt — no re-register, no re-handshake
+```
 
 ### Scope honesty
 

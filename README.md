@@ -57,7 +57,8 @@ pnpm run typecheck
   published `@agora-sdk/core`.
 - **agora-sdk-plus** (this repo) — the client crypto + transport + React layer.
 
-See [CLAUDE.md](CLAUDE.md) for architecture, [STATUS.md](STATUS.md) for current state, and
+See [CLAUDE.md](CLAUDE.md) for architecture, [ARCHITECTURE.md](ARCHITECTURE.md) for diagrams
+(package graph, seams, runtime flows), [STATUS.md](STATUS.md) for current state, and
 [`packages/secure-chat/ROADMAP.md`](packages/secure-chat/ROADMAP.md) for the Phase 2 task checklist.
 
 ## License
