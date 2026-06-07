@@ -1,10 +1,9 @@
 // useSecureMessages — load, decrypt, send, and live-receive messages in a secure conversation.
 //
-// Encryption/decryption runs through the injected `SecureChatCrypto` against the conversation's MLS
-// `GroupHandle`. Resolving conversationId → GroupHandle is owned by the platform persistence layer
-// (Phase 2: IndexedDB group state via processWelcome/importGroupState), so the caller passes the
-// handle in. Without it, ciphertext is still listed/received but left undecrypted (`plaintext: null`)
-// and sending is disabled — keeping the transport usable ahead of the crypto wiring.
+// Self-sufficient once a store is wired: the MLS GroupHandle is auto-resolved from persistence via
+// resolveGroup, and senderDeviceId is read from the persisted device. Both stay overridable through
+// options for advanced use. Without a resolvable handle, ciphertext is still listed/received
+// (plaintext: null) and sending is disabled.
 
 import { useCallback, useEffect, useState } from "react";
 import { SecureMessageModel } from "../contract/index.js";
@@ -22,9 +21,9 @@ export interface DecryptedSecureMessage {
 
 /** Options for {@link useSecureMessages}. */
 export interface UseSecureMessagesOptions {
-  /** The MLS group handle for this conversation (from the platform persistence layer). */
+  /** Override the MLS group handle. Defaults to the persisted handle via `resolveGroup`. */
   group?: GroupHandle;
-  /** The caller's device row id — required to send (the server verifies it belongs to the caller). */
+  /** Override the sender device row id. Defaults to the persisted device's `.id`. */
   senderDeviceId?: string;
 }
 
@@ -42,25 +41,24 @@ export interface UseSecureMessagesValues {
   loadMore: () => Promise<void>;
   /** Reload from the newest message, replacing the current list. */
   refresh: () => Promise<void>;
-  /** Encrypt + send a text message. Requires `group` + `senderDeviceId`. */
+  /** Encrypt + send a text message. Requires a resolvable group + sender device. */
   sendMessage: (text: string) => Promise<void>;
 }
 
 /**
  * Load, decrypt, send, and live-receive messages in one secure conversation.
  *
- * Decryption runs through the injected `SecureChatCrypto` against the conversation's MLS
- * `GroupHandle`. Without a `group` in `options`, ciphertext is still listed and received (as
- * `plaintext: null`) and sending is disabled — letting the transport work ahead of the crypto
- * wiring. Joins the conversation's socket room to receive `secure:message` events live.
+ * Auto-resolves the MLS group handle (via `resolveGroup`) and the sender device id (from the
+ * persisted device) unless overridden in `options`. Joins the conversation socket room for live
+ * `secure:message` events.
  *
  * @param conversationId - The conversation to read and send within.
- * @param options - {@link UseSecureMessagesOptions} — the MLS `group` handle and `senderDeviceId`.
- * @returns {@link UseSecureMessagesValues} — the message list, paging state, and `sendMessage`.
+ * @param options - {@link UseSecureMessagesOptions}.
+ * @returns {@link UseSecureMessagesValues}.
  *
  * @example
  * ```tsx
- * const { messages, sendMessage } = useSecureMessages(conversationId, { group, senderDeviceId });
+ * const { messages, sendMessage } = useSecureMessages(conversationId);
  * await sendMessage("hello 💜");
  * ```
  */
@@ -68,14 +66,54 @@ export function useSecureMessages(
   conversationId: string,
   options: UseSecureMessagesOptions = {}
 ): UseSecureMessagesValues {
-  const { rest, crypto, socket } = useSecureChat();
-  const { group, senderDeviceId } = options;
+  const { rest, crypto, socket, repo, resolveGroup } = useSecureChat();
 
   const [messages, setMessages] = useState<DecryptedSecureMessage[]>([]);
   const [before, setBefore] = useState<string | undefined>(undefined);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [group, setGroup] = useState<GroupHandle | null>(options.group ?? null);
+  const [senderDeviceId, setSenderDeviceId] = useState<string | undefined>(options.senderDeviceId);
+
+  // Resolve the group handle: explicit override, else persisted state.
+  useEffect(() => {
+    if (options.group) {
+      setGroup(options.group);
+      return;
+    }
+    let alive = true;
+    resolveGroup(conversationId)
+      .then((g) => {
+        if (alive) setGroup(g);
+      })
+      .catch(() => {
+        if (alive) setGroup(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [options.group, conversationId, resolveGroup]);
+
+  // Resolve the sender device id: explicit override, else persisted device row.
+  useEffect(() => {
+    if (options.senderDeviceId) {
+      setSenderDeviceId(options.senderDeviceId);
+      return;
+    }
+    let alive = true;
+    repo
+      .loadDevice()
+      .then((d) => {
+        if (alive) setSenderDeviceId(d?.device?.id ?? undefined);
+      })
+      .catch(() => {
+        if (alive) setSenderDeviceId(undefined);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [options.senderDeviceId, repo]);
 
   const decrypt = useCallback(
     async (model: SecureMessageModel): Promise<DecryptedSecureMessage> => {
@@ -84,7 +122,6 @@ export function useSecureMessages(
         const { plaintext } = await crypto.decryptMessage(group, fromBase64(model.ciphertext));
         return { model, plaintext: bytesToUtf8(plaintext) };
       } catch {
-        // Buffer/skip: epoch not yet reached, or undecryptable. Surface ciphertext without text.
         return { model, plaintext: null };
       }
     },
@@ -104,7 +141,6 @@ export function useSecureMessages(
         const oldest = page.messages[page.messages.length - 1];
         setBefore(oldest ? oldest.createdAt : before);
         setHasMore(page.hasMore);
-        // Server returns created_at DESC; keep newest-first in state.
         setMessages((prev) => (reset ? decrypted : [...prev, ...decrypted]));
       } catch (err) {
         setError(err);
@@ -135,7 +171,6 @@ export function useSecureMessages(
         epoch: epoch.toString(),
         senderDeviceId,
       });
-      // Optimistic: we know our own plaintext without a round-trip through decrypt.
       setMessages((prev) => [{ model: sent, plaintext: text }, ...prev]);
     },
     [crypto, rest, conversationId, group, senderDeviceId]
@@ -152,9 +187,7 @@ export function useSecureMessages(
     const off = socket.on("secure:message", (model) => {
       if (model.conversationId !== conversationId) return;
       decrypt(model).then((m) =>
-        setMessages((prev) =>
-          prev.some((p) => p.model.id === m.model.id) ? prev : [m, ...prev]
-        )
+        setMessages((prev) => (prev.some((p) => p.model.id === m.model.id) ? prev : [m, ...prev]))
       );
     });
     return off;
