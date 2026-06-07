@@ -1561,8 +1561,9 @@ Run:
 pnpm run typecheck
 pnpm test
 pnpm run build-all
+pnpm run verify:dist
 ```
-Expected: typecheck clean; all tests pass (crypto device-state, memory-store, repository, context, three hooks, indexeddb-store, plus the pre-existing base64 + mock-crypto suites); `build-all` emits dual ESM/CJS for every package with no `*.test.*` files in `dist`.
+Expected: typecheck clean; all tests pass (crypto device-state, memory-store, repository, context, three hooks, indexeddb-store, plus the pre-existing base64 + mock-crypto suites); `build-all` emits dual ESM/CJS for every package with no `*.test.*` files in `dist`; `verify:dist` green — confirms the new persistence files kept explicit `.js` specifiers in emitted ESM, the CJS `{"type":"commonjs"}` marker is intact, and the crypto package still load-tests in both ESM and CJS (guards the `2f2080a` ESM/CJS fix against regression).
 
 - [ ] **Step 5: Verify no test files leaked into dist**
 

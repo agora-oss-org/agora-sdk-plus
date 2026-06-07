@@ -1,6 +1,6 @@
 {
   "name": "agora-sdk-plus",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "Apache-2.0",
   "author": "Agora SDK Plus, maintained by Jenova Marie",
   "description": "Additive, Agora-only SDK features that build on @agora-sdk/* — starting with end-to-end-encrypted secure chat (MLS / RFC 9420).",
