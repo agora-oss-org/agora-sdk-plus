@@ -7,3 +7,5 @@
 export * from "@agora-sdk/secure-chat-core";
 
 export { createWebSecureChatCrypto } from "./crypto-web.js";
+export { createIndexedDBStore } from "./indexeddb-store.js";
+export type { IndexedDBStoreOptions } from "./indexeddb-store.js";

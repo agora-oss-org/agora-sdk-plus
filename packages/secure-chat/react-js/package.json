@@ -5,7 +5,15 @@
   "license": "Apache-2.0",
   "author": "Agora SDK Plus, maintained by Jenova Marie",
   "description": "Web (browser) bindings for Agora secure chat: real MLS crypto (ts-mls) + IndexedDB persistence. Re-exports @agora-sdk/secure-chat-core.",
-  "keywords": ["agora", "secure-chat", "e2ee", "mls", "react", "web", "typescript"],
+  "keywords": [
+    "agora",
+    "secure-chat",
+    "e2ee",
+    "mls",
+    "react",
+    "web",
+    "typescript"
+  ],
   "bugs": {
     "url": "https://github.com/jenova-marie/agora-sdk-plus/issues"
   },
@@ -28,7 +36,9 @@
   "publishConfig": {
     "access": "public"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "@agora-sdk/secure-chat-core": "workspace:*"
   },
@@ -36,5 +46,8 @@
     "@agora-sdk/core": "^1.2.2",
     "react": "^18.0.0 || ^19.0.0",
     "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.5"
   }
 }

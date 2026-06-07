@@ -48,5 +48,11 @@ export type {
 // ── wire contract types (transitional — see ./contract) ──────────────────────
 export type * from "./contract/index.js";
 
+// ── persistence (Phase 2) ─────────────────────────────────────────────────────
+export type { SecureChatStore } from "./persistence/store.js";
+export { MemoryStore } from "./persistence/memory-store.js";
+export { SecureChatRepository } from "./persistence/repository.js";
+export type { PersistedDevice } from "./persistence/repository.js";
+
 // ── utils ────────────────────────────────────────────────────────────────────
 export { toBase64, fromBase64, utf8ToBytes, bytesToUtf8 } from "./util/base64.js";
