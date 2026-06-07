@@ -44,7 +44,7 @@ export interface UseSecureConversationsValues {
  * ```
  */
 export function useSecureConversations(): UseSecureConversationsValues {
-  const { rest, crypto, socket } = useSecureChat();
+  const { rest, crypto, socket, rememberGroup } = useSecureChat();
 
   const [conversations, setConversations] = useState<SecureConversationModel[]>([]);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
@@ -113,10 +113,13 @@ export function useSecureConversations(): UseSecureConversationsValues {
         })),
       });
 
+      // Persist + cache the creator's MLS group handle so messages resolve after a reload.
+      await rememberGroup(conversation.id, group);
+
       setConversations((prev) => [conversation, ...prev.filter((c) => c.id !== conversation.id)]);
       return conversation;
     },
-    [rest, crypto]
+    [rest, crypto, rememberGroup]
   );
 
   useEffect(() => {
