@@ -1,11 +1,11 @@
-// Secure-chat wire contract — stand-in for @agora/contract (the Apache-2.0 server contract).
+// Secure-chat wire contract — stand-in for @agora-server/contract (the Apache-2.0 server contract).
 //
 // Mirrors the response models + request bodies of agora-server's
 // `packages/contract/src/secure-chat.ts`. That package is the source of truth (zod + TS); the
 // client only needs the TypeScript shapes, so this copy is types-only.
 //
 // ⚠️ Keep this byte-faithful to the server contract. The arrow is SDK → contract: once
-// `@agora/contract` is published, DELETE this file and `import type { ... } from "@agora/contract"`.
+// `@agora-server/contract` is published, DELETE this file and `import type { ... } from "@agora-server/contract"`.
 // Do NOT publish a separate `@agora-sdk/secure-chat-contract` (that would invert the dependency —
 // see STATUS.md). Do not let this copy drift in the meantime.
 //

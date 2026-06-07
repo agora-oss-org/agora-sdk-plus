@@ -25,7 +25,7 @@ package) and would have published AGPL crypto. The corrected model, agreed with 
 | Artifact | Home | Relationship |
 |---|---|---|
 | `SecureChatCrypto` interface + mock (+ future ts-mls/OpenMLS) | **this repo** (`@agora-sdk/secure-chat-crypto`, Apache-2.0) | agora-server **dev-depends** on it for tests — a consumer, like agora-demo consumes the published SDK |
-| secure-chat wire types (`Secure*Model`, request bodies) | **agora-server** (`@agora/contract`, Apache-2.0) | this SDK **depends on** it; we keep a stand-in copy until it's published |
+| secure-chat wire types (`Secure*Model`, request bodies) | **agora-server** (`@agora-server/contract`, Apache-2.0) | this SDK **depends on** it; we keep a stand-in copy until it's published |
 
 Why this is right: it removes the dependency inversion, and it dissolves the license problem — the
 seam was AGPL-3.0 inside the AGPL server; moved into this Apache-2.0 repo (sole-author relicense) it
@@ -37,15 +37,15 @@ becomes safely consumable by third parties.
 - Delete `packages/secure-chat-core/` and point the two integration importers
   (`test/integration/secure-helpers.ts`, `secure-chat-backup.test.ts`) at
   `@agora-sdk/secure-chat-crypto/testing` (a test **devDependency**).
-- Publish `@agora/contract` (Apache-2.0) so this SDK can depend on it for the wire types.
+- Publish `@agora-server/contract` (Apache-2.0) so this SDK can depend on it for the wire types.
 - Timing (server team's call): **cleanest** = move now, link/devDepend on the published crypto;
   **pragmatic** = keep the throwaway mock in-repo through Phase 1 (nothing's published yet) and move
   when Phase 2 builds the real core here.
 - Update the server's `CHAT_TODO.md` to this model (crypto → SDK; contract stays; SDK builds on it).
 
-### this repo (when `@agora/contract` is published)
-- Add `@agora/contract` as a dependency, delete `core/src/contract/`, and repoint imports to
-  `import type { ... } from "@agora/contract"`. Re-verify build + typecheck.
+### this repo (when `@agora-server/contract` is published)
+- Add `@agora-server/contract` as a dependency, delete `core/src/contract/`, and repoint imports to
+  `import type { ... } from "@agora-server/contract"`. Re-verify build + typecheck.
 
 ## What's next — Phase 2 (web) and Phase 3 (native)
 

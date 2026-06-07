@@ -22,7 +22,7 @@ seam. Everything below is in service of that.
 flowchart TD
   subgraph "External (not in this repo)"
     core_sdk["@agora-sdk/core<br/>Replyke fork: base URL, auth, socket origin"]
-    contract["@agora/contract<br/>wire types — owned by agora-server"]
+    contract["@agora-server/contract<br/>wire types — owned by agora-server"]
     server["agora-server<br/>blind MLS Delivery Service"]
   end
 

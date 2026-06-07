@@ -21,7 +21,7 @@ All notable changes to Agora SDK Plus are documented here, following
 - `@agora-sdk/secure-chat-react-js` (Phase 2, web), `@agora-sdk/secure-chat-react-native` and
   `@agora-sdk/secure-chat-expo` (Phase 3 stubs) — platform packages re-exporting core.
 - Stand-in in-repo copy of the secure-chat wire types, to be replaced by a dependency on the
-  server's `@agora/contract` (Apache-2.0) once it's published — the dependency arrow is SDK →
+  server's `@agora-server/contract` (Apache-2.0) once it's published — the dependency arrow is SDK →
   contract (see `STATUS.md`).
 - Docs: `packages/secure-chat/ROADMAP.md` — the SDK team's Phase 2/3 task checklist with a per-file
   map of the scaffold (the counterpart to agora-server's `CHAT_TODO.md`).
@@ -47,6 +47,14 @@ All notable changes to Agora SDK Plus are documented here, following
   then `pnpm -r publish` all packages with provenance; dist-tag by suffix — `vX.Y.Z` → `latest`,
   `vX.Y.Z-<pre>` → `beta`). Requires an `NPM_TOKEN` repo secret. Pinned `packageManager`
   to `pnpm@10.14.0` so runners match local.
+
+### Changed
+
+- The eventual contract dependency is now named **`@agora-server/contract`** (was `@agora/contract`)
+  — updated across docs (`CLAUDE.md`, `STATUS.md`, `ARCHITECTURE.md`, `ROADMAP.md`) and the in-repo
+  stand-in header (`packages/secure-chat/core/src/contract/index.ts`). The dependency arrow
+  (SDK → contract) and the byte-faithful stand-in plan are unchanged; only the package name to depend
+  on / import from once it publishes.
 
 ### Fixed
 

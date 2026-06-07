@@ -10,7 +10,7 @@ current state + cross-repo notes are in [STATUS.md](../../STATUS.md).
 is complete; the crypto is a stub. **Phase 2 = make the crypto real and persist state.**
 
 The cardinal rule (see STATUS.md): **crypto lives here; the wire contract lives in agora-server's
-`@agora/contract`; the SDK depends on the contract, never the reverse.**
+`@agora-server/contract`; the SDK depends on the contract, never the reverse.**
 
 ---
 
@@ -102,9 +102,9 @@ passphrase backup, with the server storing **only ciphertext**.
 ## Cross-repo dependencies & coordination
 
 - **Consume the mock** from `@agora-sdk/secure-chat-crypto/testing` (already exported).
-- **`@agora/contract`** — depend on it for wire types once agora-server publishes it (Apache-2.0); then
+- **`@agora-server/contract`** — depend on it for wire types once agora-server publishes it (Apache-2.0); then
   delete `core/src/contract/` and import from it. Until then keep the stand-in byte-faithful.
-- **Coordinate with the server team on:** publishing `@agora/contract`; retiring their
+- **Coordinate with the server team on:** publishing `@agora-server/contract`; retiring their
   `packages/secure-chat-core/` in favor of consuming our crypto in tests; and the **channel committer
   strategy** (MLS External Commits) *before* building `channel`-type conversations (spec §16.1).
 

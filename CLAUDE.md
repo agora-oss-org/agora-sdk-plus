@@ -31,7 +31,7 @@ internals from here.
 
 | Repo | Role |
 |---|---|
-| [agora-server](https://github.com/jenova-marie/agora-server) | The API. Owns the secure-chat **blind Delivery Service** and the wire contract (`@agora/contract`). The `SecureChatCrypto` seam moved out of here into this repo (it was test-only client code). See its `docs/SECURE_CHAT.md` — the canonical spec. |
+| [agora-server](https://github.com/jenova-marie/agora-server) | The API. Owns the secure-chat **blind Delivery Service** and the wire contract (`@agora-server/contract`). The `SecureChatCrypto` seam moved out of here into this repo (it was test-only client code). See its `docs/SECURE_CHAT.md` — the canonical spec. |
 | [agora-sdk](https://github.com/jenova-marie/agora-sdk) | The Replyke fork (`@agora-sdk/{core,react-js,react-native,expo}`). We depend on its published `@agora-sdk/core`. |
 | **agora-sdk-plus** (this repo) | Additive Agora-only SDK features. First: secure chat. |
 
@@ -86,13 +86,13 @@ The dependency arrow is **SDK → contract**, and the **crypto seam is client co
   interface + the `MockSecureChatCrypto` (and, in Phase 2, the real ts-mls/OpenMLS cores). It is
   Apache-2.0 and dependency-free. agora-server **consumes** it as a test devDependency (it only used
   the mock to simulate a client), so it must not live in the AGPL server repo.
-- **Wire types** — owned by agora-server's `@agora/contract` (Apache-2.0). This SDK **depends on**
-  it. Until `@agora/contract` is published, `packages/secure-chat/core/src/contract/` holds a
+- **Wire types** — owned by agora-server's `@agora-server/contract` (Apache-2.0). This SDK **depends on**
+  it. Until `@agora-server/contract` is published, `packages/secure-chat/core/src/contract/` holds a
   **stand-in copy** (types-only, byte-faithful to `contract/src/secure-chat.ts`).
 
-**Do not** create an `@agora-sdk/secure-chat-contract` re-exported by `@agora/contract` — that
+**Do not** create an `@agora-sdk/secure-chat-contract` re-exported by `@agora-server/contract` — that
 inverts the dependency. When the contract publishes, delete the stand-in and import from
-`@agora/contract`. Keep the stand-in byte-faithful in the meantime; see `STATUS.md` for the cross-repo
+`@agora-server/contract`. Keep the stand-in byte-faithful in the meantime; see `STATUS.md` for the cross-repo
 plan.
 
 ## Development commands
@@ -108,7 +108,7 @@ plan.
 
 > `pnpm install` resolves `@agora-sdk/core` from npm; the crypto seam comes from the in-repo
 > `@agora-sdk/secure-chat-crypto` workspace package, and the wire types from the in-repo stand-in
-> (until `@agora/contract` is published). No cross-repo linking is required to build.
+> (until `@agora-server/contract` is published). No cross-repo linking is required to build.
 
 ## Engineering standards (enforced)
 
@@ -127,7 +127,7 @@ comments are invisible to generated docs and do **not** count.
 - Interface/type members get a one-line `/** … */` each.
 - **Exception — byte-faithful copies:** do **not** add or alter doc comments in the in-repo wire-type
   stand-in (`packages/secure-chat/core/src/contract/`). It must stay byte-faithful to agora-server's
-  `contract/src/secure-chat.ts` so the eventual swap to `@agora/contract` is clean. Only document
+  `contract/src/secure-chat.ts` so the eventual swap to `@agora-server/contract` is clean. Only document
   original code authored here.
 - `pnpm run typecheck` MUST stay green after doc changes.
 
