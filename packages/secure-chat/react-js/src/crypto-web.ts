@@ -33,6 +33,8 @@ export function createWebSecureChatCrypto(): SecureChatCrypto {
     processProposal: notImplemented,
     exportGroupState: notImplemented,
     importGroupState: notImplemented,
+    exportDeviceState: notImplemented,
+    importDeviceState: notImplemented,
     exportBackup: notImplemented,
     importBackup: notImplemented,
   };

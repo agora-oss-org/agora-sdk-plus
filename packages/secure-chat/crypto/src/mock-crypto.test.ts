@@ -102,3 +102,25 @@ describe("MockSecureChatCrypto passphrase backup", () => {
     );
   });
 });
+
+describe("MockSecureChatCrypto device-state persistence", () => {
+  it("re-hydrates identity into a fresh instance and decrypts a rejoined group", async () => {
+    const { alice, aliceGroup } = await twoPartyGroup();
+    const { ciphertext } = await alice.encryptMessage(aliceGroup, utf8("after reload"));
+    const deviceState = await alice.exportDeviceState();
+    const groupState = await alice.exportGroupState(aliceGroup);
+
+    const restored = new MockSecureChatCrypto();
+    const identity = await restored.importDeviceState(deviceState);
+    expect(identity.deviceId).toBe("alice-dev");
+
+    const handle = await restored.importGroupState(groupState);
+    const out = await restored.decryptMessage(handle, ciphertext);
+    expect(fromUtf8(out.plaintext)).toBe("after reload");
+  });
+
+  it("throws when exporting with no identity generated", async () => {
+    const c = new MockSecureChatCrypto();
+    await expect(c.exportDeviceState()).rejects.toThrow(/no device identity/);
+  });
+});

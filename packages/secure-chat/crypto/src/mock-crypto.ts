@@ -230,6 +230,38 @@ export class MockSecureChatCrypto implements SecureChatCrypto {
     /* mock: proposals are no-ops until their Commit arrives */
   }
 
+  async exportDeviceState(): Promise<Uint8Array> {
+    if (!this.identity || !this.privateState) {
+      throw new Error("mock: no device identity to export (call generateDeviceIdentity first)");
+    }
+    return jsonBytes({
+      deviceId: this.identity.deviceId,
+      ciphersuite: this.identity.ciphersuite,
+      signaturePublicKey: toHex(this.identity.signaturePublicKey),
+      credential: toHex(this.identity.credential),
+      privateState: toHex(this.privateState),
+    });
+  }
+
+  async importDeviceState(state: Uint8Array): Promise<DeviceIdentity> {
+    const s = parseJson<{
+      deviceId: string;
+      ciphersuite: number;
+      signaturePublicKey: string;
+      credential: string;
+      privateState: string;
+    }>(state);
+    const identity: DeviceIdentity = {
+      deviceId: s.deviceId,
+      ciphersuite: s.ciphersuite,
+      signaturePublicKey: fromHex(s.signaturePublicKey),
+      credential: fromHex(s.credential),
+    };
+    this.identity = identity;
+    this.privateState = fromHex(s.privateState);
+    return identity;
+  }
+
   async exportGroupState(group: GroupHandle): Promise<Uint8Array> {
     const idHex = toHex(group.mlsGroupId);
     const st = this.groups.get(idHex);

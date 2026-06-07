@@ -95,6 +95,12 @@ export interface SecureChatCrypto {
   exportGroupState(group: GroupHandle): Promise<Uint8Array>;
   importGroupState(state: Uint8Array): Promise<GroupHandle>;
 
+  // ── device-state persistence (re-hydrate identity after a reload) ───────────
+  /** Serialize this device's identity + private state to an opaque blob for persistence. */
+  exportDeviceState(): Promise<Uint8Array>;
+  /** Restore device identity + private state from {@link exportDeviceState} output. */
+  importDeviceState(state: Uint8Array): Promise<DeviceIdentity>;
+
   // ── passphrase backup of all local key material ─────────────────────────────
   exportBackup(passphrase: string): Promise<PassphraseBackup>;
   importBackup(passphrase: string, backup: PassphraseBackup): Promise<void>;
