@@ -1,0 +1,46 @@
+{
+  "name": "agora-sdk-plus",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "author": "Agora SDK Plus, maintained by Jenova Marie",
+  "description": "Additive, Agora-only SDK features that build on @agora-sdk/* — starting with end-to-end-encrypted secure chat (MLS / RFC 9420).",
+  "keywords": [
+    "agora",
+    "secure-chat",
+    "e2ee",
+    "end-to-end-encryption",
+    "mls",
+    "rfc9420",
+    "messaging",
+    "react",
+    "react-native",
+    "expo",
+    "typescript"
+  ],
+  "bugs": {
+    "url": "https://github.com/jenova-marie/agora-sdk-plus/issues"
+  },
+  "homepage": "https://github.com/jenova-marie/agora-sdk-plus",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jenova-marie/agora-sdk-plus.git"
+  },
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build-all": "pnpm --filter @agora-sdk/secure-chat-crypto run build && pnpm --filter @agora-sdk/secure-chat-core run build && pnpm --filter @agora-sdk/secure-chat-react-js run build && pnpm --filter @agora-sdk/secure-chat-react-native run build && pnpm --filter @agora-sdk/secure-chat-expo run build",
+    "version:patch": "pnpm --filter @agora-sdk/secure-chat-crypto --filter @agora-sdk/secure-chat-core --filter @agora-sdk/secure-chat-react-js --filter @agora-sdk/secure-chat-react-native --filter @agora-sdk/secure-chat-expo exec npm version patch --no-git-tag-version",
+    "version:minor": "pnpm --filter @agora-sdk/secure-chat-crypto --filter @agora-sdk/secure-chat-core --filter @agora-sdk/secure-chat-react-js --filter @agora-sdk/secure-chat-react-native --filter @agora-sdk/secure-chat-expo exec npm version minor --no-git-tag-version",
+    "publish-prod": "pnpm --filter @agora-sdk/secure-chat-crypto --filter @agora-sdk/secure-chat-core --filter @agora-sdk/secure-chat-react-js --filter @agora-sdk/secure-chat-react-native --filter @agora-sdk/secure-chat-expo publish",
+    "publish-beta": "pnpm --filter @agora-sdk/secure-chat-crypto --filter @agora-sdk/secure-chat-core --filter @agora-sdk/secure-chat-react-js --filter @agora-sdk/secure-chat-react-native --filter @agora-sdk/secure-chat-expo publish --tag beta"
+  },
+  "devDependencies": {
+    "@agora-sdk/core": "^1.2.2",
+    "@types/node": "^20.14.5",
+    "@types/react": "^18.0.0",
+    "react": "^18.0.0",
+    "react-native": "^0.79.2",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.3"
+  }
+}

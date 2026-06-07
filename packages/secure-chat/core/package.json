@@ -1,0 +1,52 @@
+{
+  "name": "@agora-sdk/secure-chat-core",
+  "version": "0.1.0",
+  "private": false,
+  "license": "Apache-2.0",
+  "author": "Agora SDK Plus, maintained by Jenova Marie",
+  "description": "Platform-agnostic client for Agora end-to-end-encrypted chat (MLS / RFC 9420): transport, provider + hooks, crypto via dependency injection.",
+  "keywords": [
+    "agora",
+    "secure-chat",
+    "e2ee",
+    "mls",
+    "rfc9420",
+    "messaging",
+    "react",
+    "typescript"
+  ],
+  "bugs": {
+    "url": "https://github.com/jenova-marie/agora-sdk-plus/issues"
+  },
+  "homepage": "https://github.com/jenova-marie/agora-sdk-plus",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jenova-marie/agora-sdk-plus.git",
+    "directory": "packages/secure-chat/core"
+  },
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build:esm": "tsc -p tsconfig.esm.json",
+    "build:cjs": "tsc -p tsconfig.cjs.json",
+    "build": "rimraf dist && pnpm run build:esm && pnpm run build:cjs",
+    "prepublish": "pnpm run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@agora-sdk/secure-chat-crypto": "workspace:*",
+    "axios": "^1.4.0",
+    "socket.io-client": "^4.8.1"
+  },
+  "peerDependencies": {
+    "@agora-sdk/core": "^1.2.2",
+    "react": "^18.0.0 || ^19.0.0"
+  }
+}

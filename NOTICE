@@ -1,0 +1,17 @@
+Agora SDK Plus
+Copyright 2026 Jenova Marie
+
+This product is licensed under the Apache License, Version 2.0 (see the LICENSE file).
+
+Agora SDK Plus is original work — additive, Agora-only SDK features that build on top of
+the @agora-sdk/* packages. It does NOT contain Replyke source code; it consumes
+@agora-sdk/core (the Replyke-derived fork) as an ordinary published dependency. The fork's
+Replyke attribution lives in that package's own NOTICE, not here.
+
+The secure-chat packages implement the client side of Agora's end-to-end-encrypted chat
+(MLS / RFC 9420). The wire contract and the SecureChatCrypto seam originate in the Agora
+server (github.com/jenova-marie/agora-server), also authored by Jenova Marie; transitional
+local copies in this repo are slated to be replaced by the published
+@agora-sdk/secure-chat-contract and @agora-sdk/secure-chat-crypto packages.
+
+This project is NOT affiliated with, sponsored by, or endorsed by Replyke.

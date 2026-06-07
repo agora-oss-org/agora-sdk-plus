@@ -1,0 +1,33 @@
+# Node.js dependencies
+node_modules/
+.pnpm/
+.pnp/
+.pnp.cjs
+
+# Build artifacts
+dist/
+build/
+.out/
+**/dist/
+
+# Logs & debugging
+npm-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+.DS_Store
+*.log
+
+# Environment variables & secrets
+.env
+.env.local
+.env.*.local
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+
+# TypeScript build outputs
+*.tsbuildinfo
+
+recycle_bin

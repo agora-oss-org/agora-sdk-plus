@@ -1,0 +1,65 @@
+# Agora SDK Plus
+
+Additive, **Agora-only** SDK features that build on top of [`@agora-sdk/*`](https://github.com/jenova-marie/agora-sdk) —
+capabilities with no upstream [Replyke](https://github.com/replyke/monorepo) counterpart, kept out of
+the agora-sdk fork so that fork stays a tiny, documented divergence from upstream.
+
+First feature: **secure chat** — the client side of Agora's end-to-end-encrypted messaging
+(**MLS / [RFC 9420](https://www.rfc-editor.org/rfc/rfc9420)**). The Agora server is a *blind*
+delivery service that never sees plaintext; all crypto lives in these client packages behind a
+swappable `SecureChatCrypto` seam.
+
+> **Status: early scaffold (Phase 2 in progress).** The package structure, transport, and
+> provider/hooks API are being built. The real MLS crypto implementation (ts-mls / OpenMLS-WASM) is
+> not wired yet. Not published to npm.
+
+## Packages
+
+| Package | Role |
+|---|---|
+| `@agora-sdk/secure-chat-crypto` | The `SecureChatCrypto` seam: interface (main entry) + `MockSecureChatCrypto` (`./testing`). Dependency-free; the real ts-mls/OpenMLS cores plug in here |
+| `@agora-sdk/secure-chat-core` | Platform-agnostic: REST + `/secure` socket transport, `SecureChatProvider` + hooks, crypto via dependency injection |
+| `@agora-sdk/secure-chat-react-js` | Web: real `SecureChatCrypto` (ts-mls) + IndexedDB persistence *(Phase 2)* |
+| `@agora-sdk/secure-chat-react-native` | Bare React Native: Keychain + native MLS *(Phase 3 — stub)* |
+| `@agora-sdk/secure-chat-expo` | Expo: SecureStore *(Phase 3 — stub)* |
+
+## Install (once published)
+
+```bash
+# web
+pnpm add @agora-sdk/core @agora-sdk/secure-chat-react-js
+```
+
+```tsx
+import { ReplykeProvider } from "@agora-sdk/react-js";
+import { SecureChatProvider } from "@agora-sdk/secure-chat-react-js";
+
+<ReplykeProvider projectId={projectId} baseUrl={baseUrl}>
+  <SecureChatProvider crypto={crypto} accessToken={accessToken}>
+    {/* useSecureConversations(), useSecureMessages(), … */}
+  </SecureChatProvider>
+</ReplykeProvider>
+```
+
+## Develop
+
+```bash
+pnpm install
+pnpm run build-all     # core → react-js → react-native → expo (dual ESM + CJS)
+pnpm run typecheck
+```
+
+## How this fits together
+
+- **[agora-server](https://github.com/jenova-marie/agora-server)** — the blind MLS Delivery Service.
+  Canonical spec: its `docs/SECURE_CHAT.md`.
+- **[agora-sdk](https://github.com/jenova-marie/agora-sdk)** — the Replyke fork; we consume its
+  published `@agora-sdk/core`.
+- **agora-sdk-plus** (this repo) — the client crypto + transport + React layer.
+
+See [CLAUDE.md](CLAUDE.md) for architecture, [STATUS.md](STATUS.md) for current state, and
+[`packages/secure-chat/ROADMAP.md`](packages/secure-chat/ROADMAP.md) for the Phase 2 task checklist.
+
+## License
+
+[Apache-2.0](LICENSE). Original Agora work; not affiliated with Replyke.
