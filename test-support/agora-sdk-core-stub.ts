@@ -3,8 +3,10 @@
 // The real @agora-sdk/core ESM build uses extensionless relative imports that
 // Node's strict ESM resolver cannot find. Rather than patching a published
 // package, we expose only the subset of the public API that `secure-chat-core`
-// imports, with no-op implementations suitable for tests (providers under test
-// always override baseUrl / socketUrl via props so these are never called).
+// imports. The placeholder return values are safe because URL resolution is
+// LAZY: `getApiBaseUrl` / `getSocketUrl` are only invoked inside the axios
+// request interceptor and socket.io `connect()`, neither of which runs in these
+// unit tests (no request is made and no socket is opened).
 export function getApiBaseUrl(): string {
   return "http://localhost";
 }

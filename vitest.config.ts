@@ -29,9 +29,10 @@ export default defineConfig({
       ),
       "@agora-sdk/secure-chat-crypto": fromHere("packages/secure-chat/crypto/src/index.ts"),
       // Stub out @agora-sdk/core — its published ESM build uses extensionless relative imports that
-      // Node's strict ESM resolver rejects, and its CJS build fails in an ESM context. Tests that
-      // use SecureChatProvider always supply explicit baseUrl / socketUrl props, so the stub's
-      // no-op implementations are never actually called.
+      // Node's strict ESM resolver rejects, and its CJS build fails in an ESM context. The stub's
+      // placeholder URLs are safe because resolution is lazy: getApiBaseUrl / getSocketUrl only run
+      // inside the axios request interceptor and socket.io connect(), neither of which fires in
+      // these unit tests (no request is made, no socket opened).
       "@agora-sdk/core": fromHere("test-support/agora-sdk-core-stub.ts"),
     },
   },

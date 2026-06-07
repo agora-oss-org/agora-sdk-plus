@@ -114,6 +114,8 @@ export function SecureChatProvider({
   const repo = useMemo(() => new SecureChatRepository(resolvedStore), [resolvedStore]);
 
   // In-memory GroupHandle cache, keyed by conversationId. Survives re-renders via the ref.
+  // NOTE: not cleared on a `store` prop swap — a store change in practice means a new provider
+  // instance (fresh cache), not a live prop change on the same mounted provider.
   const groupCache = useRef(new Map<string, GroupHandle>());
 
   const resolveGroup = useCallback(
