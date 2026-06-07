@@ -42,6 +42,13 @@ All notable changes to Agora SDK Plus are documented here, following
   with mermaid wiring + reload-survive diagrams — generic key→blob store seam, typed repository,
   provider-injected store with a cached `resolveGroup`, and an `exportDeviceState`/`importDeviceState`
   addition to the crypto seam.
+- `SecureChatRepository` (`packages/secure-chat/core/src/persistence/repository.ts`) — typed
+  façade over `SecureChatStore`. Owns the full key schema (`device`, `group:<convId>`,
+  `handshake:cursor`) and serialization (binary `deviceState` base64-wrapped inside JSON; opaque MLS
+  group-state blobs stored as raw bytes). Exposes `loadDevice` / `saveDevice` / `clearDevice`,
+  `loadGroupState` / `saveGroupState` / `deleteGroupState` / `listGroupConversationIds`,
+  `loadHandshakeCursor` / `saveHandshakeCursor`, and `clearAll`. Four vitest tests cover every
+  method (round-trip and wipe).
 - **GitHub Actions** — `.github/workflows/ci.yml` (typecheck + test + build-all on push to `main`
   and all PRs, Node 20 & 22) and `.github/workflows/publish.yml` (on a `v*` tag: re-run the CI gate,
   then `pnpm -r publish` all packages with provenance; dist-tag by suffix — `vX.Y.Z` → `latest`,
