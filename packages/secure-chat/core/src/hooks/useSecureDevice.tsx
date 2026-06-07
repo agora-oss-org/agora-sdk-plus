@@ -24,7 +24,8 @@ function newDeviceId(): string {
 
 /** Options for {@link useSecureDevice}. */
 export interface UseSecureDeviceOptions {
-  /** Stable, persisted client device id. Generated (and persisted) if omitted. */
+  /** Stable, persisted client device id. Generated (and persisted) if omitted. A previously
+   *  persisted device's id takes precedence over this value when one exists on mount. */
   deviceId?: string;
   /** MLS ciphersuite to register under. Defaults to the crypto implementation's preferred suite. */
   ciphersuite?: number;
@@ -66,7 +67,7 @@ export interface UseSecureDeviceValues {
  * @example
  * ```tsx
  * const { device, loading, register } = useSecureDevice();
- * useEffect(() => { if (!loading && !device) register(); }, [loading, device]);
+ * useEffect(() => { if (!loading && !device) register(); }, [loading, device, register]);
  * ```
  */
 export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecureDeviceValues {
@@ -80,6 +81,7 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
   const [keyPackagesAvailable, setKeyPackagesAvailable] = useState<number | null>(null);
 
   const deviceIdRef = useRef<string>(options.deviceId ?? newDeviceId());
+  const registerStartedRef = useRef(false);
 
   // On mount: re-hydrate a persisted device (stable id + private state). No persisted device ⇒
   // first-run; the app calls register().
@@ -87,10 +89,17 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
     let alive = true;
     (async () => {
       const persisted = await repo.loadDevice();
-      if (!alive) return;
+      if (!alive || registerStartedRef.current) {
+        setLoading(false);
+        return;
+      }
       if (persisted) {
         await crypto.importDeviceState(persisted.deviceState);
-        if (!alive) return;
+        // register() may have started during the await — don't overwrite its identity.
+        if (!alive || registerStartedRef.current) {
+          setLoading(false);
+          return;
+        }
         deviceIdRef.current = persisted.deviceId;
         setDevice(persisted.device);
       }
@@ -130,6 +139,7 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
   }, [rest, device]);
 
   const register = useCallback(async (): Promise<SecureDeviceModel> => {
+    registerStartedRef.current = true;
     setRegistering(true);
     setError(null);
     try {

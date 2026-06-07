@@ -59,17 +59,24 @@ describe("useSecureDevice", () => {
     const store = new MemoryStore();
 
     await crypto.generateDeviceIdentity({ deviceId: "dev-x" });
+    const deviceState = await crypto.exportDeviceState();
     await new SecureChatRepository(store).saveDevice({
       deviceId: "dev-x",
-      deviceState: await crypto.exportDeviceState(),
+      deviceState,
       device: row("row-1", "dev-x"),
     });
 
     const fresh = new MockSecureChatCrypto();
+    const importSpy = vi.spyOn(fresh, "importDeviceState");
     const { result } = renderHook(() => useSecureDevice(), { wrapper: wrap(fresh, store) });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.device?.id).toBe("row-1");
     expect(reg).not.toHaveBeenCalled();
+    // Re-hydration must replay the persisted private state through the crypto seam. Compare by
+    // content: the bytes are base64 round-tripped on the way out of the store, so the array passed
+    // is an equal-but-distinct instance (different backing buffer) than the one we seeded.
+    expect(importSpy).toHaveBeenCalledOnce();
+    expect(Array.from(importSpy.mock.calls[0][0])).toEqual(Array.from(deviceState));
   });
 });
