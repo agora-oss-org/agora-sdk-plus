@@ -1,28 +1,38 @@
-// SecureChatProvider — wires the transport + crypto for the secure-chat hooks.
+// SecureChatProvider — wires transport + crypto + persistence for the secure-chat hooks.
 //
 // Sits INSIDE a ReplykeProvider: by default it resolves the API base URL and socket origin from
-// @agora-sdk/core's runtime singletons (getApiBaseUrl / getSocketUrl), so whatever `baseUrl` the
-// app set on ReplykeProvider is honored here too. Crypto is injected (a `SecureChatCrypto`), keeping
-// core platform- and library-agnostic — the web/native packages supply the concrete MLS impl.
+// @agora-sdk/core's runtime singletons (getApiBaseUrl / getSocketUrl). Crypto AND the persistence
+// store are injected, keeping core platform- and library-agnostic. The provider builds a typed
+// SecureChatRepository over the store plus a cached resolveGroup/rememberGroup so the hooks become
+// self-sufficient (no need to thread a GroupHandle in by hand).
 
-import React, { createContext, useContext, useEffect, useMemo, useRef } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef } from "react";
 import { getApiBaseUrl, getSocketUrl } from "@agora-sdk/core";
+import { SecureChatCrypto, GroupHandle } from "@agora-sdk/secure-chat-crypto";
 
-import { SecureChatCrypto } from "@agora-sdk/secure-chat-crypto";
 import { SecureChatRestClient } from "../transport/rest.js";
 import { SecureChatSocketClient } from "../transport/socket.js";
+import { SecureChatStore } from "../persistence/store.js";
+import { MemoryStore } from "../persistence/memory-store.js";
+import { SecureChatRepository } from "../persistence/repository.js";
 
 /**
- * The value exposed by {@link useSecureChat}: the shared transport clients, the injected crypto,
- * and the active project id. The hooks build everything else on top of these.
+ * The value exposed by {@link useSecureChat}: shared transport clients, the injected crypto, the
+ * persistence repository, the group-handle resolver, and the active project id.
  */
 export interface SecureChatContextValue {
   /** REST client for the blind Delivery Service endpoints. */
   rest: SecureChatRestClient;
   /** Realtime client for the `/secure` socket.io namespace. */
   socket: SecureChatSocketClient;
-  /** The injected MLS crypto implementation (mock, or platform ts-mls/native). */
+  /** The injected MLS crypto implementation. */
   crypto: SecureChatCrypto;
+  /** Typed persistence over the injected store. */
+  repo: SecureChatRepository;
+  /** Resolve a conversation's MLS group handle (cache → store → importGroupState), or `null`. */
+  resolveGroup: (conversationId: string) => Promise<GroupHandle | null>;
+  /** Cache + persist a conversation's group handle (after createGroup / processWelcome). */
+  rememberGroup: (conversationId: string, handle: GroupHandle) => Promise<void>;
   /** The Agora project id these clients are scoped to. */
   projectId: string;
 }
@@ -35,6 +45,8 @@ export interface SecureChatProviderProps {
   crypto: SecureChatCrypto;
   /** Agora project id (path-scoped on every endpoint). */
   projectId: string;
+  /** Persistence store. Defaults to a non-persistent in-memory store when omitted. */
+  store?: SecureChatStore;
   /** Current access token. Re-pass on refresh; read lazily per request. */
   accessToken?: string;
   /** Override token resolution (takes precedence over `accessToken`). */
@@ -47,34 +59,29 @@ export interface SecureChatProviderProps {
 }
 
 /**
- * Provides the secure-chat transport + crypto to the `useSecure*` hooks. Render it inside a
- * `ReplykeProvider`: by default it inherits the API base URL and socket origin from
- * `@agora-sdk/core`'s runtime, and disconnects the socket on unmount.
+ * Provides secure-chat transport, crypto, and persistence to the `useSecure*` hooks. Render inside a
+ * `ReplykeProvider`; disconnects the socket on unmount.
  *
- * @param props - {@link SecureChatProviderProps} — the injected crypto, project id, token, and
- *   optional base/socket URL overrides.
+ * @param props - {@link SecureChatProviderProps}.
  * @returns A context provider wrapping `children`.
  *
  * @example
  * ```tsx
- * <ReplykeProvider projectId={projectId} baseUrl={baseUrl}>
- *   <SecureChatProvider crypto={crypto} projectId={projectId} accessToken={token}>
- *     <Chat />
- *   </SecureChatProvider>
- * </ReplykeProvider>
+ * <SecureChatProvider crypto={crypto} projectId={projectId} store={createIndexedDBStore()} accessToken={token}>
+ *   <Chat />
+ * </SecureChatProvider>
  * ```
  */
 export function SecureChatProvider({
   crypto,
   projectId,
+  store,
   accessToken,
   getAccessToken,
   baseUrl,
   socketUrl,
   children,
 }: SecureChatProviderProps) {
-  // Keep the latest token in a ref so the per-request resolver always returns the current value
-  // without rebuilding the transport clients on every token change.
   const tokenRef = useRef<string | undefined>(accessToken);
   tokenRef.current = accessToken;
 
@@ -103,13 +110,41 @@ export function SecureChatProvider({
     [projectId, resolveToken, socketUrl]
   );
 
+  const resolvedStore = useMemo(() => store ?? new MemoryStore(), [store]);
+  const repo = useMemo(() => new SecureChatRepository(resolvedStore), [resolvedStore]);
+
+  // In-memory GroupHandle cache, keyed by conversationId. Survives re-renders via the ref.
+  const groupCache = useRef(new Map<string, GroupHandle>());
+
+  const resolveGroup = useCallback(
+    async (conversationId: string): Promise<GroupHandle | null> => {
+      const cached = groupCache.current.get(conversationId);
+      if (cached) return cached;
+      const bytes = await repo.loadGroupState(conversationId);
+      if (!bytes) return null;
+      const handle = await crypto.importGroupState(bytes);
+      groupCache.current.set(conversationId, handle);
+      return handle;
+    },
+    [repo, crypto]
+  );
+
+  const rememberGroup = useCallback(
+    async (conversationId: string, handle: GroupHandle): Promise<void> => {
+      groupCache.current.set(conversationId, handle);
+      const bytes = await crypto.exportGroupState(handle);
+      await repo.saveGroupState(conversationId, bytes);
+    },
+    [repo, crypto]
+  );
+
   useEffect(() => {
     return () => socket.disconnect();
   }, [socket]);
 
   const value = useMemo<SecureChatContextValue>(
-    () => ({ rest, socket, crypto, projectId }),
-    [rest, socket, crypto, projectId]
+    () => ({ rest, socket, crypto, repo, resolveGroup, rememberGroup, projectId }),
+    [rest, socket, crypto, repo, resolveGroup, rememberGroup, projectId]
   );
 
   return <SecureChatContext.Provider value={value}>{children}</SecureChatContext.Provider>;
@@ -118,7 +153,7 @@ export function SecureChatProvider({
 /**
  * Access the nearest {@link SecureChatContextValue}.
  *
- * @returns The shared rest/socket/crypto/projectId for this provider subtree.
+ * @returns The shared rest/socket/crypto/repo/resolveGroup/projectId for this provider subtree.
  * @throws {Error} When called outside a `<SecureChatProvider>`.
  */
 export function useSecureChat(): SecureChatContextValue {
