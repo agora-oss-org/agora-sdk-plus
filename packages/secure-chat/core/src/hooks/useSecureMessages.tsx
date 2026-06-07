@@ -82,6 +82,9 @@ export function useSecureMessages(
       setGroup(options.group);
       return;
     }
+    // Clear any stale handle from the previous conversation before re-resolving, so live messages
+    // for the new conversation never decrypt against the old group during the async window.
+    setGroup(null);
     let alive = true;
     resolveGroup(conversationId)
       .then((g) => {
@@ -122,6 +125,7 @@ export function useSecureMessages(
         const { plaintext } = await crypto.decryptMessage(group, fromBase64(model.ciphertext));
         return { model, plaintext: bytesToUtf8(plaintext) };
       } catch {
+        // Buffer/skip: epoch not yet reached, or undecryptable. Surface ciphertext without text.
         return { model, plaintext: null };
       }
     },
@@ -141,6 +145,7 @@ export function useSecureMessages(
         const oldest = page.messages[page.messages.length - 1];
         setBefore(oldest ? oldest.createdAt : before);
         setHasMore(page.hasMore);
+        // Server returns created_at DESC; keep newest-first in state.
         setMessages((prev) => (reset ? decrypted : [...prev, ...decrypted]));
       } catch (err) {
         setError(err);
@@ -171,6 +176,7 @@ export function useSecureMessages(
         epoch: epoch.toString(),
         senderDeviceId,
       });
+      // Optimistic: we know our own plaintext without a round-trip through decrypt.
       setMessages((prev) => [{ model: sent, plaintext: text }, ...prev]);
     },
     [crypto, rest, conversationId, group, senderDeviceId]
