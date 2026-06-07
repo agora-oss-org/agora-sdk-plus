@@ -53,6 +53,21 @@ All notable changes to Agora SDK Plus are documented here, following
 - Root `pnpm run typecheck` no longer requires a prior `build-all`: it resolves the in-repo
   workspace packages to their source via `tsconfig` `paths`, so a fresh checkout (and CI) typechecks
   without first emitting each package's `dist/*.d.ts`.
+- **Broken ESM/CJS package output (all packages).** `tsc` emitted extensionless relative imports
+  (e.g. `export … from "./mock-crypto"`), which Node's ESM resolver rejects — so
+  `@agora-sdk/secure-chat-crypto`'s `./testing` entry (and every other relative import) failed to
+  load for ESM consumers. Fixed by writing explicit `.js` extensions on all relative specifiers in
+  source (`./contract` → `./contract/index.js`). Additionally, because each package is
+  `"type": "module"`, the `dist/cjs/*.js` CommonJS output was being parsed as ESM; `build:cjs` now
+  emits a `dist/cjs/package.json` (`{"type":"commonjs"}`) so the CJS entry resolves too.
+- Added `scripts/verify-dist.mjs` (`pnpm run verify:dist`, run after `build-all` in CI and publish):
+  static-lints emitted ESM for extensionless relative imports, checks the CJS type marker, and
+  load-tests the dependency-free `crypto` package in both ESM and CJS — so a broken dist can never be
+  published again.
+- Documented [`UPSTREAM_FIX.md`](UPSTREAM_FIX.md): the upstream `@agora-sdk/core@1.2.2` is unloadable
+  (no `exports` map, extensionless ESM imports, no CJS type marker) — the same bug class — which
+  blocks `secure-chat-core` + platform packages at runtime until the agora-sdk repo is fixed and
+  republished. `secure-chat-crypto` is unaffected.
 
 ### Not yet implemented
 

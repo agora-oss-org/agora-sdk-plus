@@ -5,34 +5,34 @@
 // re-export this and add the concrete crypto + persistence.
 
 // ── context / provider ──────────────────────────────────────────────────────
-export { SecureChatProvider, useSecureChat } from "./context/secure-chat-context";
+export { SecureChatProvider, useSecureChat } from "./context/secure-chat-context.js";
 export type {
   SecureChatProviderProps,
   SecureChatContextValue,
-} from "./context/secure-chat-context";
+} from "./context/secure-chat-context.js";
 
 // ── hooks ────────────────────────────────────────────────────────────────────
-export { useSecureDevice } from "./hooks/useSecureDevice";
-export type { UseSecureDeviceOptions, UseSecureDeviceValues } from "./hooks/useSecureDevice";
-export { useSecureConversations } from "./hooks/useSecureConversations";
-export type { UseSecureConversationsValues } from "./hooks/useSecureConversations";
-export { useSecureMessages } from "./hooks/useSecureMessages";
+export { useSecureDevice } from "./hooks/useSecureDevice.js";
+export type { UseSecureDeviceOptions, UseSecureDeviceValues } from "./hooks/useSecureDevice.js";
+export { useSecureConversations } from "./hooks/useSecureConversations.js";
+export type { UseSecureConversationsValues } from "./hooks/useSecureConversations.js";
+export { useSecureMessages } from "./hooks/useSecureMessages.js";
 export type {
   UseSecureMessagesOptions,
   UseSecureMessagesValues,
   DecryptedSecureMessage,
-} from "./hooks/useSecureMessages";
+} from "./hooks/useSecureMessages.js";
 
 // ── transport (for advanced / non-React use) ─────────────────────────────────
-export { SecureChatRestClient } from "./transport/rest";
-export type { SecureChatRestConfig } from "./transport/rest";
-export { SecureChatSocketClient } from "./transport/socket";
+export { SecureChatRestClient } from "./transport/rest.js";
+export type { SecureChatRestConfig } from "./transport/rest.js";
+export { SecureChatSocketClient } from "./transport/socket.js";
 export type {
   SecureSocket,
   SecureServerEvents,
   SecureClientEvents,
   SecureChatSocketConfig,
-} from "./transport/socket";
+} from "./transport/socket.js";
 
 // ── crypto seam (re-exported from @agora-sdk/secure-chat-crypto, the seam's home) ──
 export type {
@@ -46,7 +46,7 @@ export type {
 } from "@agora-sdk/secure-chat-crypto";
 
 // ── wire contract types (transitional — see ./contract) ──────────────────────
-export type * from "./contract";
+export type * from "./contract/index.js";
 
 // ── utils ────────────────────────────────────────────────────────────────────
-export { toBase64, fromBase64, utf8ToBytes, bytesToUtf8 } from "./util/base64";
+export { toBase64, fromBase64, utf8ToBytes, bytesToUtf8 } from "./util/base64.js";

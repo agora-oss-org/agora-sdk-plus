@@ -31,6 +31,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "verify:dist": "node scripts/verify-dist.mjs",
     "build-all": "pnpm --filter @agora-sdk/secure-chat-crypto run build && pnpm --filter @agora-sdk/secure-chat-core run build && pnpm --filter @agora-sdk/secure-chat-react-js run build && pnpm --filter @agora-sdk/secure-chat-react-native run build && pnpm --filter @agora-sdk/secure-chat-expo run build",
     "version:patch": "pnpm --filter @agora-sdk/secure-chat-crypto --filter @agora-sdk/secure-chat-core --filter @agora-sdk/secure-chat-react-js --filter @agora-sdk/secure-chat-react-native --filter @agora-sdk/secure-chat-expo exec npm version patch --no-git-tag-version",
     "version:minor": "pnpm --filter @agora-sdk/secure-chat-crypto --filter @agora-sdk/secure-chat-core --filter @agora-sdk/secure-chat-react-js --filter @agora-sdk/secure-chat-react-native --filter @agora-sdk/secure-chat-expo exec npm version minor --no-git-tag-version",

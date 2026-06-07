@@ -22,7 +22,7 @@ import type {
   CommitResult,
   PassphraseBackup,
   TargetedWelcome,
-} from "./interface";
+} from "./interface.js";
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();

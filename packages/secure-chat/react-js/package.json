@@ -21,7 +21,7 @@
   "type": "module",
   "scripts": {
     "build:esm": "tsc -p tsconfig.esm.json",
-    "build:cjs": "tsc -p tsconfig.cjs.json",
+    "build:cjs": "tsc -p tsconfig.cjs.json && echo '{\"type\":\"commonjs\"}' > dist/cjs/package.json",
     "build": "rimraf dist && pnpm run build:esm && pnpm run build:cjs",
     "prepublish": "pnpm run build"
   },

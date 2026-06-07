@@ -6,4 +6,4 @@
 
 export * from "@agora-sdk/secure-chat-core";
 
-export { createWebSecureChatCrypto } from "./crypto-web";
+export { createWebSecureChatCrypto } from "./crypto-web.js";

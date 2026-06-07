@@ -21,7 +21,7 @@ import {
   SecureMessageModel,
   SendSecureMessageBody,
   UploadKeyBackupBody,
-} from "../contract";
+} from "../contract/index.js";
 
 /**
  * Configuration for {@link SecureChatRestClient}. The base URL and access token are read through

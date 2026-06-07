@@ -6,7 +6,7 @@
 // payloads carry ciphertext only.
 
 import { io, Socket } from "socket.io-client";
-import { SecureHandshakeModel, SecureMessageModel } from "../contract";
+import { SecureHandshakeModel, SecureMessageModel } from "../contract/index.js";
 
 /** Server → client events on the `/secure` namespace (§10). */
 export interface SecureServerEvents {

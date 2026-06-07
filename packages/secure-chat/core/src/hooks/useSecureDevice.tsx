@@ -8,9 +8,9 @@
 // Core only performs registration + relay; it does not persist secrets.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SecureDeviceModel } from "../contract";
-import { toBase64 } from "../util/base64";
-import { useSecureChat } from "../context/secure-chat-context";
+import { SecureDeviceModel } from "../contract/index.js";
+import { toBase64 } from "../util/base64.js";
+import { useSecureChat } from "../context/secure-chat-context.js";
 
 /**
  * Mint a device id when the caller doesn't supply one — `crypto.randomUUID()` when available, else a

@@ -7,10 +7,10 @@
 // and sending is disabled — keeping the transport usable ahead of the crypto wiring.
 
 import { useCallback, useEffect, useState } from "react";
-import { SecureMessageModel } from "../contract";
+import { SecureMessageModel } from "../contract/index.js";
 import { GroupHandle } from "@agora-sdk/secure-chat-crypto";
-import { toBase64, fromBase64, utf8ToBytes, bytesToUtf8 } from "../util/base64";
-import { useSecureChat } from "../context/secure-chat-context";
+import { toBase64, fromBase64, utf8ToBytes, bytesToUtf8 } from "../util/base64.js";
+import { useSecureChat } from "../context/secure-chat-context.js";
 
 /** A stored message paired with its decrypted text (when a group handle is available). */
 export interface DecryptedSecureMessage {

@@ -5,9 +5,9 @@
 // the client; the server only stores ciphertext metadata.
 
 import { useCallback, useEffect, useState } from "react";
-import { SecureConversationModel } from "../contract";
-import { toBase64, fromBase64 } from "../util/base64";
-import { useSecureChat } from "../context/secure-chat-context";
+import { SecureConversationModel } from "../contract/index.js";
+import { toBase64, fromBase64 } from "../util/base64.js";
+import { useSecureChat } from "../context/secure-chat-context.js";
 
 /** The state and actions returned by {@link useSecureConversations}. */
 export interface UseSecureConversationsValues {

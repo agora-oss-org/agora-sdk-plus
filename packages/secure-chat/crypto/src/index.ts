@@ -12,4 +12,4 @@ export type {
   TargetedWelcome,
   CommitResult,
   PassphraseBackup,
-} from "./interface";
+} from "./interface.js";

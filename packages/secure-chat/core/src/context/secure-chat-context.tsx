@@ -9,8 +9,8 @@ import React, { createContext, useContext, useEffect, useMemo, useRef } from "re
 import { getApiBaseUrl, getSocketUrl } from "@agora-sdk/core";
 
 import { SecureChatCrypto } from "@agora-sdk/secure-chat-crypto";
-import { SecureChatRestClient } from "../transport/rest";
-import { SecureChatSocketClient } from "../transport/socket";
+import { SecureChatRestClient } from "../transport/rest.js";
+import { SecureChatSocketClient } from "../transport/socket.js";
 
 /**
  * The value exposed by {@link useSecureChat}: the shared transport clients, the injected crypto,

@@ -45,3 +45,7 @@ jobs:
 
       - name: Build all packages
         run: pnpm run build-all
+
+      # Catch packaging defects tsc can't see: extensionless ESM imports, CJS mis-typed as ESM.
+      - name: Verify dist (ESM + CJS load)
+        run: pnpm run verify:dist
