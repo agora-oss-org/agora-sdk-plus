@@ -47,6 +47,13 @@ All notable changes to Agora SDK Plus are documented here, following
   then `pnpm -r publish` all packages with provenance; dist-tag by suffix — `vX.Y.Z` → `latest`,
   `vX.Y.Z-<pre>` → `beta`). Requires an `NPM_TOKEN` repo secret. Pinned `packageManager`
   to `pnpm@10.14.0` so runners match local.
+- **Persistence layer (Phase 2)** — `SecureChatStore` key→blob seam + `MemoryStore` (core),
+  `SecureChatRepository` typed façade, provider-injected `store` with a cached `resolveGroup` /
+  `rememberGroup`, and `createIndexedDBStore()` (react-js). The three hooks are now self-sufficient:
+  device identity + stable `deviceId` persist and re-hydrate, created groups persist, and
+  `useSecureMessages` auto-resolves the group handle + sender device. Adds
+  `exportDeviceState`/`importDeviceState` to the `SecureChatCrypto` seam. Plaintext at rest on web
+  (documented); backup-restore eviction recovery and handshake processing stay deferred (tasks 5, 4).
 
 ### Changed
 
@@ -79,5 +86,5 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Not yet implemented
 
-- Real MLS `SecureChatCrypto` (ts-mls / OpenMLS-WASM); IndexedDB group-state persistence;
-  KeyPackage replenishment loop; passphrase backup/restore UX.
+- Real MLS `SecureChatCrypto` (ts-mls / OpenMLS-WASM); KeyPackage replenishment loop;
+  passphrase backup/restore UX; backup-restore eviction recovery; handshake processing.
