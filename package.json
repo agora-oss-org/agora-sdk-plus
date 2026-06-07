@@ -28,6 +28,8 @@
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "build-all": "pnpm --filter @agora-sdk/secure-chat-crypto run build && pnpm --filter @agora-sdk/secure-chat-core run build && pnpm --filter @agora-sdk/secure-chat-react-js run build && pnpm --filter @agora-sdk/secure-chat-react-native run build && pnpm --filter @agora-sdk/secure-chat-expo run build",
     "version:patch": "pnpm --filter @agora-sdk/secure-chat-crypto --filter @agora-sdk/secure-chat-core --filter @agora-sdk/secure-chat-react-js --filter @agora-sdk/secure-chat-react-native --filter @agora-sdk/secure-chat-expo exec npm version patch --no-git-tag-version",
     "version:minor": "pnpm --filter @agora-sdk/secure-chat-crypto --filter @agora-sdk/secure-chat-core --filter @agora-sdk/secure-chat-react-js --filter @agora-sdk/secure-chat-react-native --filter @agora-sdk/secure-chat-expo exec npm version minor --no-git-tag-version",
@@ -41,6 +43,7 @@
     "react": "^18.0.0",
     "react-native": "^0.79.2",
     "rimraf": "^6.0.1",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.8"
   }
 }

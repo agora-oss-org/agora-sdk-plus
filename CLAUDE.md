@@ -106,11 +106,60 @@ plan.
 > `@agora-sdk/secure-chat-crypto` workspace package, and the wire types from the in-repo stand-in
 > (until `@agora/contract` is published). No cross-repo linking is required to build.
 
-## Changelog discipline
+## Engineering standards (enforced)
+
+These are **requirements**, not suggestions. Every code change MUST satisfy all four before it is
+considered done. They apply to all original code under `packages/**`.
+
+### 1. TSDoc on every public export
+
+Every **exported** symbol (function, class, hook, interface, type, const, enum) carries a `/** … */`
+TSDoc block. TypeDoc only reads block comments directly above a declaration — file-header `//`
+comments are invisible to generated docs and do **not** count.
+
+- Document the symbol with a real, specific description — **never leave `[PLACEHOLDER]` text**.
+- Functions/hooks: `@param` per parameter, `@returns`, and `@throws {ErrorType}` for each error a
+  caller can hit. Add an `@example` for anything non-trivial (providers, hooks, clients).
+- Interface/type members get a one-line `/** … */` each.
+- **Exception — byte-faithful copies:** do **not** add or alter doc comments in the in-repo wire-type
+  stand-in (`packages/secure-chat/core/src/contract/`). It must stay byte-faithful to agora-server's
+  `contract/src/secure-chat.ts` so the eventual swap to `@agora/contract` is clean. Only document
+  original code authored here.
+- `pnpm run typecheck` MUST stay green after doc changes.
+
+### 2. Good comments — explain *why*, not *what*
+
+- Lead each source file with a short header comment stating its purpose and where it sits in the
+  blind-server / client-crypto model (match the existing files' style).
+- Comment the non-obvious: epoch/ordering invariants, the base64⇄`Uint8Array` wire boundary, lazy
+  token/baseUrl resolution, optimistic UI, "buffer ahead-of-epoch" skips — the reasoning a future
+  reader can't recover from the code alone.
+- Do not narrate what the code already says. Keep comments **truthful and current** — update them in
+  the same edit that changes the behavior they describe; a stale comment is a bug.
+
+### 3. Changelog discipline
 
 Keep [`CHANGELOG.md`](CHANGELOG.md) ([Keep a Changelog](https://keepachangelog.com/)) current: after
 any code/config/build change, add a bullet under `## [Unreleased]` in the right group
-(`Added` / `Changed` / `Fixed` / `Removed`) in the same commit.
+(`Added` / `Changed` / `Fixed` / `Removed`) in the **same commit**.
+
+### 4. Unit tests for every feature and fix
+
+- Every new feature or bug fix ships with unit tests in the same change. A bug fix starts with a test
+  that **fails before** the fix and **passes after** it.
+- Co-locate tests next to the code as `*.test.ts` / `*.test.tsx` (excluded from `tsc` build output).
+- Inject `MockSecureChatCrypto` from `@agora-sdk/secure-chat-crypto/testing` — never reach for real
+  MLS crypto or a live server in unit tests. Mock the transport (`SecureChatRestClient` /
+  `SecureChatSocketClient`) at its boundary; assert on the base64/epoch wire shapes the client emits.
+- Cover the branches that matter: error/`@throws` paths, empty/`hasMore` pagination, the
+  no-`group` "listed but undecrypted" path, and realtime de-dup.
+- Run the suite with `pnpm test` (one-shot) or `pnpm test:watch`. The harness is **vitest**, driven
+  by the root [`vitest.config.ts`](vitest.config.ts): it globs `packages/**/src/**/*.test.{ts,tsx}`
+  and aliases the workspace crypto package to its source, so tests import `@agora-sdk/secure-chat-crypto`
+  / `…/testing` without a build. Default env is `node`; opt a hook/provider test into jsdom with a
+  `// @vitest-environment jsdom` pragma (install `jsdom` + `@testing-library/react` when the first
+  such test lands). `*.test.ts(x)` files are excluded from every package's `tsc` build.
+- Tests MUST pass (`pnpm test` green) before claiming work complete.
 
 ## Phasing (from agora-server `docs/SECURE_CHAT.md` §15)
 

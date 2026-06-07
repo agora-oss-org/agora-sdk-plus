@@ -14,5 +14,5 @@
     "skipLibCheck": true
   },
   "include": ["src"],
-  "exclude": ["recycle_bin", "dist"]
+  "exclude": ["recycle_bin", "dist", "**/*.test.ts", "**/*.test.tsx"]
 }

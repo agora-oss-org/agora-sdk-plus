@@ -29,6 +29,13 @@ All notable changes to Agora SDK Plus are documented here, following
   the `useSecure*` hooks, `SecureChatRestClient`, `SecureChatSocketClient`, and their option/return
   types. The transitional contract/crypto-interface copies are intentionally left undocumented to
   stay byte-faithful to the agora-server source.
+- `CLAUDE.md` "Engineering standards (enforced)" section — required clauses for TSDoc on public
+  exports, intent-explaining comments, changelog discipline, and unit tests (with `MockSecureChatCrypto`).
+- **vitest** test harness — root `vitest.config.ts` (globs `packages/**/src/**/*.test.{ts,tsx}`,
+  node env, aliases the workspace crypto package to source) plus `test` / `test:watch` scripts;
+  `*.test.ts(x)` excluded from every package's `tsc` build. First tests: `base64` wire-boundary
+  round-trips (`@agora-sdk/secure-chat-core`) and a two-party `MockSecureChatCrypto` DM flow incl.
+  plaintext-hiding + passphrase backup/restore (`@agora-sdk/secure-chat-crypto`).
 
 ### Not yet implemented
 
