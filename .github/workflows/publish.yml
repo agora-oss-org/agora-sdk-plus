@@ -1,0 +1,66 @@
+# Publish — release every workspace package to npm on a version tag.
+#
+# Trigger: push a tag like `v0.2.0` (→ npm dist-tag `latest`) or `v0.2.0-beta.1` (any semver
+# prerelease, i.e. a hyphen in the tag → dist-tag `beta`). The published VERSION comes from each
+# package.json, not the tag — so the normal flow is: `pnpm run version:patch` (bumps all 5), commit,
+# `git tag vX.Y.Z`, `git push --tags`. This workflow re-runs the full CI gate, then publishes.
+#
+# `pnpm -r publish` walks the workspace in dependency order (crypto before core) and rewrites
+# `workspace:*` ranges to the concrete published version. It is idempotent: packages already at their
+# target version on the registry are skipped, so a re-run after a partial failure is safe.
+#
+# Auth: an npm automation token in the `NPM_TOKEN` repo secret (Settings → Secrets and variables →
+# Actions). `id-token: write` lets npm attach build provenance/attestations to each release.
+name: Publish
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write # required for npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          # Writes an .npmrc pointing at npm; NODE_AUTH_TOKEN is substituted at publish time.
+          registry-url: https://registry.npmjs.org
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Re-run the CI gate so a tag can never publish a red build.
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build all packages
+        run: pnpm run build-all
+
+      - name: Resolve npm dist-tag from git tag
+        id: disttag
+        run: |
+          # Semver prereleases always contain a hyphen (e.g. v1.2.3-beta.1) → publish under `beta`.
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            echo "tag=beta" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm
+        run: pnpm -r publish --access public --no-git-checks --tag "${{ steps.disttag.outputs.tag }}"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"

@@ -8,7 +8,17 @@
     "moduleResolution": "bundler",
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    // Resolve the in-repo workspace packages to their SOURCE so `pnpm run typecheck` is
+    // self-contained — it must not require a prior `build-all` to have emitted each package's
+    // `dist/*.d.ts`. Per-package `tsc` builds still resolve via `dist` in dependency order, so
+    // `build-all` is unaffected. `@agora-sdk/core` stays an external dep, resolved normally.
+    "baseUrl": ".",
+    "paths": {
+      "@agora-sdk/secure-chat-crypto": ["packages/secure-chat/crypto/src/index.ts"],
+      "@agora-sdk/secure-chat-crypto/testing": ["packages/secure-chat/crypto/src/testing.ts"],
+      "@agora-sdk/secure-chat-core": ["packages/secure-chat/core/src/index.ts"]
+    }
   },
   "include": ["packages/**/src/**/*"],
   "exclude": ["node_modules", "recycle_bin", "packages/**/dist"]

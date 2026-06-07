@@ -36,6 +36,17 @@ All notable changes to Agora SDK Plus are documented here, following
   `*.test.ts(x)` excluded from every package's `tsc` build. First tests: `base64` wire-boundary
   round-trips (`@agora-sdk/secure-chat-core`) and a two-party `MockSecureChatCrypto` DM flow incl.
   plaintext-hiding + passphrase backup/restore (`@agora-sdk/secure-chat-crypto`).
+- **GitHub Actions** — `.github/workflows/ci.yml` (typecheck + test + build-all on push to `main`
+  and all PRs, Node 20 & 22) and `.github/workflows/publish.yml` (on a `v*` tag: re-run the CI gate,
+  then `pnpm -r publish` all packages with provenance; dist-tag by suffix — `vX.Y.Z` → `latest`,
+  `vX.Y.Z-<pre>` → `beta`). Requires an `NPM_TOKEN` repo secret. Pinned `packageManager`
+  to `pnpm@10.14.0` so runners match local.
+
+### Fixed
+
+- Root `pnpm run typecheck` no longer requires a prior `build-all`: it resolves the in-repo
+  workspace packages to their source via `tsconfig` `paths`, so a fresh checkout (and CI) typechecks
+  without first emitting each package's `dist/*.d.ts`.
 
 ### Not yet implemented
 

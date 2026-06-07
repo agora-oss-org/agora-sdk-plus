@@ -26,6 +26,7 @@
     "url": "https://github.com/jenova-marie/agora-sdk-plus.git"
   },
   "private": true,
+  "packageManager": "pnpm@10.14.0",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
