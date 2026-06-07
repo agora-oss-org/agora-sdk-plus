@@ -1,11 +1,9 @@
-// useSecureDevice — register this client as an MLS device (leaf) and keep its KeyPackages topped up.
+// useSecureDevice — register this client as an MLS device (leaf), persist its identity, and keep its
+// KeyPackages topped up.
 //
-// Flow (server spec §14): generateDeviceIdentity → POST /devices → publish a batch of KeyPackages;
-// replenish on the `secure:key-packages-low` realtime signal or via the count endpoint.
-//
-// NOTE: the device's PRIVATE state (`privateState` from generateDeviceIdentity, and MLS group
-// state) must be persisted by the platform layer (IndexedDB on web, keystore on native — Phase 2/3).
-// Core only performs registration + relay; it does not persist secrets.
+// On mount it re-hydrates a persisted device (stable deviceId + private state via
+// crypto.importDeviceState) so a reload does NOT mint a new identity. register() generates, registers
+// on the server, and persists. Replenishes on the `secure:key-packages-low` realtime signal.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SecureDeviceModel } from "../contract/index.js";
@@ -14,20 +12,19 @@ import { useSecureChat } from "../context/secure-chat-context.js";
 
 /**
  * Mint a device id when the caller doesn't supply one — `crypto.randomUUID()` when available, else a
- * non-cryptographic timestamp+random fallback. The platform layer should supply a persisted id.
+ * non-cryptographic timestamp+random fallback.
  *
  * @returns A fresh device id string.
  */
 function newDeviceId(): string {
   const g = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
   if (g?.randomUUID) return g.randomUUID();
-  // Platform layer should supply a persisted, stable device id; this is a non-crypto fallback.
   return `dev-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
 }
 
 /** Options for {@link useSecureDevice}. */
 export interface UseSecureDeviceOptions {
-  /** Stable, persisted client device id. Generated if omitted (persist it in the platform layer). */
+  /** Stable, persisted client device id. Generated (and persisted) if omitted. */
   deviceId?: string;
   /** MLS ciphersuite to register under. Defaults to the crypto implementation's preferred suite. */
   ciphersuite?: number;
@@ -41,13 +38,15 @@ export interface UseSecureDeviceOptions {
 export interface UseSecureDeviceValues {
   /** The registered device row (its `.id` is the uuid used as targetDeviceId everywhere). */
   device: SecureDeviceModel | null;
+  /** True until the initial persisted-device load settles. */
+  loading: boolean;
   /** True while {@link UseSecureDeviceValues.register} is in flight. */
   registering: boolean;
-  /** The last error thrown by registration or replenishment, or `null`. */
+  /** The last error thrown by load, registration, or replenishment, or `null`. */
   error: unknown;
   /** Last known count of unconsumed KeyPackages, or `null` until refreshed. */
   keyPackagesAvailable: number | null;
-  /** Generate identity + register (idempotent server-side on (userId, deviceId)). */
+  /** Generate identity + register (idempotent server-side on (userId, deviceId)) and persist it. */
   register: () => Promise<SecureDeviceModel>;
   /** Generate + publish `count` fresh KeyPackages (default = keyPackageTarget). */
   publishKeyPackages: (count?: number) => Promise<number>;
@@ -56,32 +55,55 @@ export interface UseSecureDeviceValues {
 }
 
 /**
- * Register this client as an MLS device (one device = one leaf) and keep its KeyPackages stocked.
+ * Register this client as an MLS device, persist its identity, and keep KeyPackages stocked.
  *
- * On {@link UseSecureDeviceValues.register} it generates a device identity, POSTs it to `/devices`,
- * and (when `autoReplenish` is on) republishes KeyPackages whenever the server emits
- * `secure:key-packages-low` for this device. The device's private key material must be persisted by
- * the platform layer — this hook only handles registration and relay.
+ * On mount it loads any persisted device and re-hydrates the crypto identity (stable id, no
+ * re-register). When none exists, await {@link UseSecureDeviceValues.register}.
  *
- * @param options - {@link UseSecureDeviceOptions} — device id, ciphersuite, and replenishment tuning.
- * @returns {@link UseSecureDeviceValues} — the device row, status flags, and register/publish actions.
+ * @param options - {@link UseSecureDeviceOptions}.
+ * @returns {@link UseSecureDeviceValues}.
  *
  * @example
  * ```tsx
- * const { device, register } = useSecureDevice({ keyPackageTarget: 20 });
- * useEffect(() => { register(); }, []);
+ * const { device, loading, register } = useSecureDevice();
+ * useEffect(() => { if (!loading && !device) register(); }, [loading, device]);
  * ```
  */
 export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecureDeviceValues {
-  const { crypto, rest, socket } = useSecureChat();
+  const { crypto, rest, socket, repo } = useSecureChat();
   const { ciphersuite, keyPackageTarget = 20, autoReplenish = true } = options;
 
   const [device, setDevice] = useState<SecureDeviceModel | null>(null);
+  const [loading, setLoading] = useState(true);
   const [registering, setRegistering] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [keyPackagesAvailable, setKeyPackagesAvailable] = useState<number | null>(null);
 
   const deviceIdRef = useRef<string>(options.deviceId ?? newDeviceId());
+
+  // On mount: re-hydrate a persisted device (stable id + private state). No persisted device ⇒
+  // first-run; the app calls register().
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const persisted = await repo.loadDevice();
+      if (!alive) return;
+      if (persisted) {
+        await crypto.importDeviceState(persisted.deviceState);
+        if (!alive) return;
+        deviceIdRef.current = persisted.deviceId;
+        setDevice(persisted.device);
+      }
+      setLoading(false);
+    })().catch((err) => {
+      if (!alive) return;
+      setError(err);
+      setLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [repo, crypto]);
 
   const publishKeyPackages = useCallback(
     async (count: number = keyPackageTarget): Promise<number> => {
@@ -121,6 +143,9 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
         credential: toBase64(identity.credential),
         ciphersuite: identity.ciphersuite,
       });
+      const deviceState = await crypto.exportDeviceState();
+      await repo.saveDevice({ deviceId: identity.deviceId, deviceState, device: registered });
+      deviceIdRef.current = identity.deviceId;
       setDevice(registered);
       return registered;
     } catch (err) {
@@ -129,7 +154,7 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
     } finally {
       setRegistering(false);
     }
-  }, [crypto, rest, ciphersuite]);
+  }, [crypto, rest, repo, ciphersuite]);
 
   // Auto-replenish on the server's low-water signal for this device.
   useEffect(() => {
@@ -143,6 +168,7 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
 
   return {
     device,
+    loading,
     registering,
     error,
     keyPackagesAvailable,
