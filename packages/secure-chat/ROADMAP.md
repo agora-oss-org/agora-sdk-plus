@@ -5,9 +5,11 @@ team's counterpart to agora-server's `CHAT_TODO.md` (server checklist) and `docs
 **canonical spec** — read it first). Orientation for this repo is in [CLAUDE.md](../../CLAUDE.md);
 current state + cross-repo notes are in [STATUS.md](../../STATUS.md).
 
-**Where we are:** Server Phase 1 (the blind MLS Delivery Service) is shipped. This repo owns the
-**crypto seam**, the **transport**, and the **React layer**, all scaffolded and building. The transport
-is complete; the crypto is a stub. **Phase 2 = make the crypto real and persist state.**
+**Where we are:** Server Phase 1 (the blind MLS Delivery Service) is shipped. The SDK's transport,
+**persistence**, React layer, handshake processing, and the **real ts-mls MLS core** are all done and
+released (**v0.4.0**), proven end-to-end by the dual mock/ts-mls e2e against a running agora-server.
+**Remaining Phase 2 = passphrase backup/restore (the DoD gap) + hardening** (generation-counter
+enforcement, KeyPackage-replenishment tuning, 409 epoch-conflict rebase, optional metadata hardening).
 
 The cardinal rule (see STATUS.md): **crypto lives here; the wire contract lives in agora-server's
 `@agora-server/contract`; the SDK depends on the contract, never the reverse.**
@@ -22,13 +24,13 @@ The structure is in place — Phase 2 is mostly *filling defined seams*, not new
 |---|---|---|
 | Real `SecureChatCrypto` | `crypto/src/ts-mls/` (`@agora-sdk/secure-chat-crypto/ts-mls`) | ✅ **done** — real ts-mls core on the opt-in ESM-only subpath; mock stays on `./testing`. |
 | Web crypto + persistence wiring | `react-js/src/crypto-web.ts` | ✅ `createWebSecureChatCrypto()` returns the real ts-mls core; group state persists via the IndexedDB store. |
-| Device registration + KeyPackages | `core/src/hooks/useSecureDevice.tsx` | transport + low-water auto-replenish done; **needs `privateState` persistence + a stable persisted `deviceId`**. |
-| DM creation (claim→createGroup→relay) | `core/src/hooks/useSecureConversations.tsx` | transport flow done; **needs group-state persistence after `createGroup`**. |
-| Send/receive + decrypt | `core/src/hooks/useSecureMessages.tsx` | encrypt/decrypt done *given a `GroupHandle`*; **needs the `conversationId → GroupHandle` resolver** (the persistence layer). |
+| Device registration + KeyPackages | `core/src/hooks/useSecureDevice.tsx` | ✅ transport + auto-replenish + `privateState`/stable `deviceId` persistence done (low-water *threshold tuning* remains — task 3). |
+| DM creation (claim→createGroup→relay) | `core/src/hooks/useSecureConversations.tsx` | ✅ done — group state persists after `createGroup` (`rememberGroup`). |
+| Send/receive + decrypt | `core/src/hooks/useSecureMessages.tsx` | ✅ done — cached `conversationId → GroupHandle` resolver wired; re-decrypts buffered rows when the epoch advances. |
 | REST + `/secure` socket | `core/src/transport/*` | complete. |
 
-The two recurring gaps — "persist `privateState`" and "resolve `conversationId → GroupHandle`" — are
-both **task 2 (persistence)** below. Land that and the hooks light up.
+Both recurring gaps — "persist `privateState`" and "resolve `conversationId → GroupHandle`" — landed in
+**task 2 (persistence)** below; the hooks are now self-sufficient.
 
 ---
 
@@ -47,15 +49,15 @@ both **task 2 (persistence)** below. Land that and the hooks light up.
       (spec §11, open decision #3). The ts-mls core surfaces this via `processMessage` results;
       enforcement (rejecting stale/gapped generations to the caller) is still **deferred**.
 
-### 2. Key & group-state persistence
-- [ ] Define a small **persistence interface** (get/set opaque blobs by key) so web uses IndexedDB and
-      RN/Expo can swap a keystore later.
-- [ ] Persist: device `privateState` + the stable `deviceId`; per-group state via
-      `exportGroupState`/`importGroupState`; the handshake `lastSeq` cursor (task 4).
-- [ ] Implement the **`conversationId → GroupHandle`** resolver and feed it to `useSecureMessages`
-      (and the post-`createGroup` save in `useSecureConversations`).
+### 2. Key & group-state persistence — ✅ done (v0.2.0+), except eviction recovery
+- [x] Define a small **persistence interface** (get/set opaque blobs by key) so web uses IndexedDB and
+      RN/Expo can swap a keystore later. *(`SecureChatStore` + `MemoryStore` (core); `createIndexedDBStore` (react-js).)*
+- [x] Persist: device `privateState` + the stable `deviceId`; per-group state via
+      `exportGroupState`/`importGroupState`; the handshake `lastSeq` cursor (task 4). *(`SecureChatRepository`.)*
+- [x] Implement the **`conversationId → GroupHandle`** resolver and feed it to `useSecureMessages`
+      (and the post-`createGroup` save in `useSecureConversations`). *(provider-cached `resolveGroup`/`rememberGroup`.)*
 - [ ] Handle eviction gracefully (Safari ITP / "clear browsing data") — detect missing state and fall
-      back to backup-restore (task 5) rather than crashing.
+      back to backup-restore (task 5) rather than crashing. *(deferred — depends on task 5.)*
 
 ### 3. KeyPackage replenishment loop
 - [ ] Publish a batch on registration (done) and **top up** on `secure:key-packages-low` (already wired
@@ -82,7 +84,9 @@ both **task 2 (persistence)** below. Land that and the hooks light up.
 - [ ] **Safety-number / key-verification UI** (out-of-band fingerprint compare) for TOFU hardening.
 
 ### 7. Tests + a working demo
-- [ ] Mock-backed (`@agora-sdk/secure-chat-crypto/testing`) unit tests of the hooks.
+- [x] Mock-backed (`@agora-sdk/secure-chat-crypto/testing`) unit tests of the hooks.
+      *(`useSecureDevice`/`useSecureConversations`/`useSecureMessages`/`useSecureHandshakes` `.test.tsx`,
+      plus transport, persistence, crypto, and ciphersuite suites — 56 tests via `pnpm test`.)*
 - [x] An e2e against a **running agora-server** proving, from the client side, the round-trip
       (register → DM → send → receive → reload-survives → restore-on-new-browser) and that the server
       only ever stored ciphertext. Consider wiring a secure-chat screen into `agora-demo`.
