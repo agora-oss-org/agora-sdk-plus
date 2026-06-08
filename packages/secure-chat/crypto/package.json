@@ -37,6 +37,10 @@
       "types": "./dist/esm/testing.d.ts",
       "import": "./dist/esm/testing.js",
       "require": "./dist/cjs/testing.js"
+    },
+    "./ts-mls": {
+      "types": "./dist/esm/ts-mls/index.d.ts",
+      "import": "./dist/esm/ts-mls/index.js"
     }
   },
   "scripts": {
