@@ -6,6 +6,13 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Not yet implemented
+
+- Real MLS `SecureChatCrypto` (ts-mls / OpenMLS-WASM); KeyPackage replenishment loop;
+  passphrase backup/restore UX; backup-restore eviction recovery; handshake processing.
+
+## [0.2.0] — 2026-06-07
+
 ### Added
 
 - Initial monorepo scaffold for **Agora SDK Plus** — additive, Agora-only SDK features built on
@@ -88,8 +95,3 @@ All notable changes to Agora SDK Plus are documented here, following
   (no `exports` map, extensionless ESM imports, no CJS type marker) — the same bug class — which
   blocks `secure-chat-core` + platform packages at runtime until the agora-sdk repo is fixed and
   republished. `secure-chat-crypto` is unaffected.
-
-### Not yet implemented
-
-- Real MLS `SecureChatCrypto` (ts-mls / OpenMLS-WASM); KeyPackage replenishment loop;
-  passphrase backup/restore UX; backup-restore eviction recovery; handshake processing.

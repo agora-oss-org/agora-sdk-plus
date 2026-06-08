@@ -1,11 +1,18 @@
 {
   "name": "@agora-sdk/secure-chat-react-native",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "license": "Apache-2.0",
   "author": "Agora SDK Plus, maintained by Jenova Marie",
   "description": "Bare React Native bindings for Agora secure chat: native MLS + Keychain. Re-exports @agora-sdk/secure-chat-core. (Phase 3 — stub.)",
-  "keywords": ["agora", "secure-chat", "e2ee", "mls", "react-native", "typescript"],
+  "keywords": [
+    "agora",
+    "secure-chat",
+    "e2ee",
+    "mls",
+    "react-native",
+    "typescript"
+  ],
   "bugs": {
     "url": "https://github.com/jenova-marie/agora-sdk-plus/issues"
   },
@@ -28,7 +35,9 @@
   "publishConfig": {
     "access": "public"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "@agora-sdk/secure-chat-core": "workspace:*"
   },

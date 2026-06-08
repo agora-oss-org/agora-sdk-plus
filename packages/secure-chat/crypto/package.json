@@ -1,11 +1,19 @@
 {
   "name": "@agora-sdk/secure-chat-crypto",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": false,
   "license": "Apache-2.0",
   "author": "Agora SDK Plus, maintained by Jenova Marie",
   "description": "The SecureChatCrypto seam for Agora end-to-end-encrypted chat (MLS / RFC 9420): the client crypto interface + a deterministic mock. Dependency-free; the real ts-mls/OpenMLS cores plug in behind the interface.",
-  "keywords": ["agora", "secure-chat", "e2ee", "mls", "rfc9420", "crypto", "typescript"],
+  "keywords": [
+    "agora",
+    "secure-chat",
+    "e2ee",
+    "mls",
+    "rfc9420",
+    "crypto",
+    "typescript"
+  ],
   "bugs": {
     "url": "https://github.com/jenova-marie/agora-sdk-plus/issues"
   },
@@ -40,5 +48,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "files": ["dist"]
+  "files": [
+    "dist"
+  ]
 }
