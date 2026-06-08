@@ -74,6 +74,13 @@ export interface UseSecureHandshakesValues {
  * Commit for a group whose Welcome hasn't been seen is skipped — `seq` ordering puts the Welcome
  * first, so an unknown group means this device is genuinely not a member.
  *
+ * Mount it exactly once. Processing is serialized *within* a mount, and the cursor is re-read from
+ * storage at the start of each run, so a serialized re-mount (or `deviceId` change) resumes without
+ * reprocessing. It does NOT serialize across a *concurrent* re-mount whose prior catch-up is still
+ * in flight; that case relies on `processWelcome` / `processCommit` being idempotent for a replayed
+ * blob. The mock is idempotent (so dev StrictMode double-invoke is harmless); harden this when the
+ * real MLS core lands (Task 1) if its handshake processing is not replay-safe.
+ *
  * @example
  * ```tsx
  * const { device } = useSecureDevice();
@@ -175,23 +182,33 @@ export function useSecureHandshakes(
       else schedule(h);
     };
 
-    const runCatchUp = async (): Promise<void> => {
-      catchingUpRef.current = true;
-      try {
-        for (;;) {
-          const page = await rest.fetchHandshakes(deviceId!, {
-            since: cursorRef.current ?? undefined,
-            limit: pageSize,
-          });
-          for (const h of page.handshakes) await schedule(h);
-          if (!page.hasMore) break;
+    // Coalesce overlapping invocations: a `resync()` fired while a catch-up is still draining returns
+    // the in-flight promise instead of starting a second drain (two drains would race the
+    // `catchingUpRef` gate + `liveBuffer` and could break seq ordering).
+    let catchUpInFlight: Promise<void> | null = null;
+    const runCatchUp = (): Promise<void> => {
+      if (catchUpInFlight) return catchUpInFlight;
+      catchUpInFlight = (async () => {
+        catchingUpRef.current = true;
+        try {
+          for (;;) {
+            const page = await rest.fetchHandshakes(deviceId!, {
+              since: cursorRef.current ?? undefined,
+              limit: pageSize,
+            });
+            for (const h of page.handshakes) await schedule(h);
+            if (!page.hasMore) break;
+          }
+        } finally {
+          catchingUpRef.current = false;
+          // Replay anything that landed live during catch-up, in seq order, through the same queue.
+          const buffered = liveBuffer.splice(0).sort((a, b) => compareSeq(a.seq, b.seq));
+          for (const h of buffered) schedule(h);
         }
-      } finally {
-        catchingUpRef.current = false;
-        // Replay anything that landed live during catch-up, in seq order, through the same queue.
-        const buffered = liveBuffer.splice(0).sort((a, b) => compareSeq(a.seq, b.seq));
-        for (const h of buffered) schedule(h);
-      }
+      })().finally(() => {
+        catchUpInFlight = null;
+      });
+      return catchUpInFlight;
     };
 
     (async () => {

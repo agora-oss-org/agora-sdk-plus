@@ -223,6 +223,68 @@ describe("useSecureHandshakes", () => {
     expect(fetch2.mock.calls[0]?.[1]).toEqual({ since: "9", limit: 100 });
   });
 
+  it("buffers a live handshake arriving during catch-up and replays it (not dropped)", async () => {
+    const a = await makeGroupAndWelcome();
+    const b = await makeGroupAndWelcome();
+    // A deferred catch-up fetch lets us fire a live event WHILE catch-up is in flight.
+    let resolveFetch!: (v: { handshakes: SecureHandshakeModel[]; hasMore: boolean }) => void;
+    const fetchP = new Promise<{ handshakes: SecureHandshakeModel[]; hasMore: boolean }>((r) => {
+      resolveFetch = r;
+    });
+    vi.spyOn(SecureChatRestClient.prototype, "fetchHandshakes").mockReturnValue(fetchP as never);
+
+    const recipient = new MockSecureChatCrypto();
+    const store = new MemoryStore();
+    await seedDevice(store);
+    const { result } = renderHook(() => useSecureHandshakes(), { wrapper: wrap(recipient, store) });
+
+    // Live welcome (conv-2) arrives during catch-up → must be buffered, not applied yet.
+    await waitFor(() => expect(handlers["secure:welcome"]).toBeDefined());
+    await act(async () => {
+      handlers["secure:welcome"]!({ ...welcomeRow("2", b.welcomePayload), conversationId: "conv-2" });
+    });
+    expect(await store.get("group:conv-2")).toBeNull();
+
+    // Resolve catch-up (conv-1, seq 1); both the catch-up row and the buffered live row must apply.
+    await act(async () => {
+      resolveFetch({ handshakes: [welcomeRow("1", a.welcomePayload)], hasMore: false });
+    });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    expect(await store.get("group:conv-1")).not.toBeNull();
+    expect(await store.get("group:conv-2")).not.toBeNull();
+    expect(result.current.cursor).toBe("2");
+  });
+
+  it("skips a handshake whose processing throws and advances past it (no wedge)", async () => {
+    const { welcomePayload } = await makeGroupAndWelcome();
+    const recipient = new MockSecureChatCrypto();
+    const processWelcomeSpy = vi
+      .spyOn(recipient, "processWelcome")
+      .mockRejectedValueOnce(new Error("bad blob")); // first row poisons; later calls run for real
+    const store = new MemoryStore();
+    await seedDevice(store);
+    const errors: unknown[] = [];
+
+    vi.spyOn(SecureChatRestClient.prototype, "fetchHandshakes").mockResolvedValue({
+      handshakes: [
+        welcomeRow("1", welcomePayload),
+        { ...welcomeRow("2", welcomePayload), conversationId: "conv-2" },
+      ],
+      hasMore: false,
+    });
+
+    const { result } = renderHook(() => useSecureHandshakes({ onError: (e) => errors.push(e) }), {
+      wrapper: wrap(recipient, store),
+    });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    expect(errors).toHaveLength(1); // the poison row was reported
+    expect(await store.get("group:conv-1")).toBeNull(); // seq 1 threw → not joined
+    expect(await store.get("group:conv-2")).not.toBeNull(); // seq 2 still processed (no wedge)
+    expect(result.current.cursor).toBe("2"); // cursor advanced past the poison row
+    expect(processWelcomeSpy).toHaveBeenCalledTimes(2);
+  });
+
   it("pages through the catch-up loop until hasMore is false", async () => {
     const a = await makeGroupAndWelcome();
     const b = await makeGroupAndWelcome();
