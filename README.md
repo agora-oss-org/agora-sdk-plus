@@ -47,7 +47,28 @@ import { SecureChatProvider } from "@agora-sdk/secure-chat-react-js";
 pnpm install
 pnpm run build-all     # core → react-js → react-native → expo (dual ESM + CJS)
 pnpm run typecheck
+pnpm test              # unit suite (vitest) — fully mocked, no server needed
 ```
+
+### Foundation e2e (optional, needs a running agora-server)
+
+`pnpm test:e2e` drives the **real** transport clients against a locally running
+[agora-server](https://github.com/jenova-marie/agora-server), proving the wire contract end to end
+(register → DM → send → receive → realtime → reload, server-blind throughout). It is **opt-in**: skipped
+unless `AGORA_E2E_TEST_DATABASE_URL` is set, so the default `pnpm test` and CI never need a server.
+
+```bash
+# 1. Start the server (in the agora-server repo), pointed at a Postgres you can write to:
+pnpm db:migrate && pnpm dev:api        # listens on :4000
+
+# 2. Run the e2e (env values must match the server's): 
+AGORA_E2E_TEST_DATABASE_URL="postgres://…"  \
+AGORA_E2E_ACCESS_TOKEN_SECRET="<server ACCESS_TOKEN_SECRET>"  \
+pnpm test:e2e
+```
+
+Other knobs: `AGORA_E2E_BASE_URL` (default `http://localhost:4000/v7`), `AGORA_E2E_SOCKET_URL`
+(default `http://localhost:4000`). The suite seeds its own throwaway project and tears it down.
 
 ## How this fits together
 

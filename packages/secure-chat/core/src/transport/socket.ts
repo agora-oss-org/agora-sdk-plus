@@ -20,10 +20,18 @@ export interface SecureServerEvents {
   "secure:typing:stop": (signal: { conversationId: string; userId: string }) => void;
 }
 
-/** Client → server events. */
+/**
+ * Client → server events.
+ *
+ * @remarks
+ * Payloads are **objects**, not bare ids — the server destructures `{ conversationId }` /
+ * `{ deviceId }` off the first argument (agora-server `realtime/secure-socket.ts`). Emitting a bare
+ * string lands as `undefined` after destructuring (and, on a `null` payload, throws server-side), so
+ * the join silently fails. Keep these shapes in lockstep with the server's `SecureClientToServerEvents`.
+ */
 export interface SecureClientEvents {
-  "join:secure-conversation": (conversationId: string) => void;
-  "join:secure-device": (deviceId: string) => void;
+  "join:secure-conversation": (payload: { conversationId: string }) => void;
+  "join:secure-device": (payload: { deviceId: string }) => void;
 }
 
 /** A socket.io `Socket` typed with the secure-chat event maps in both directions. */
@@ -82,12 +90,14 @@ export class SecureChatSocketClient {
 
   /** Join a conversation room (membership-gated server-side) to receive its broadcasts. */
   joinConversation(conversationId: string): void {
-    this.connect().emit("join:secure-conversation", conversationId);
+    // Object payload — the server destructures `{ conversationId }`; a bare string would arrive as
+    // `undefined` and the join would silently no-op (see SecureClientEvents).
+    this.connect().emit("join:secure-conversation", { conversationId });
   }
 
   /** Explicitly join a device room (ownership-verified). Owned devices auto-join on connect. */
   joinDevice(deviceId: string): void {
-    this.connect().emit("join:secure-device", deviceId);
+    this.connect().emit("join:secure-device", { deviceId });
   }
 
   /**

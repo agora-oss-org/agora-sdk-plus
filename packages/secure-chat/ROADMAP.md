@@ -88,9 +88,12 @@ both **task 2 (persistence)** below. Land that and the hooks light up.
 
 ### 7. Tests + a working demo
 - [ ] Mock-backed (`@agora-sdk/secure-chat-crypto/testing`) unit tests of the hooks.
-- [ ] An e2e against a **running agora-server** proving, from the client side, the round-trip
+- [x] An e2e against a **running agora-server** proving, from the client side, the round-trip
       (register → DM → send → receive → reload-survives → restore-on-new-browser) and that the server
       only ever stored ciphertext. Consider wiring a secure-chat screen into `agora-demo`.
+      *(`e2e/secure-chat.e2e.ts` — opt-in `pnpm test:e2e`, real transport + MockSecureChatCrypto + two
+      devices; covers register→DM→send→receive→realtime→reload + server-blindness. Restore-on-new-browser
+      via passphrase backup stays with task 5; the demo screen is still TODO.)*
 
 ---
 

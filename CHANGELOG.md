@@ -6,6 +6,28 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- **Foundation-validation e2e (test infra).** An opt-in Node suite (`e2e/secure-chat.e2e.ts`,
+  `e2e/bootstrap.ts`, `vitest.e2e.config.ts`, `pnpm test:e2e`) that drives the **real**
+  `SecureChatRestClient` + `SecureChatSocketClient` against a **locally running agora-server** with
+  `MockSecureChatCrypto` and two simulated devices. It proves the full round-trip end to end —
+  register → publish KeyPackages → start DM → recipient joins via the handshake inbox → send →
+  receive+decrypt → **server stored only ciphertext** → live `/secure` realtime fan-out → fresh-client
+  cursor catch-up (reload-survives). Gated on `AGORA_E2E_TEST_DATABASE_URL` so the default `pnpm test`
+  and CI stay server-free; it imports the transport source directly (no `@agora-sdk/core`, no React),
+  which also confirms the transport path loads under plain Node ESM. Adds devDeps `pg` + `jose`
+  (direct DB seeding + token signing, mirroring agora-server's integration helpers).
+
+### Fixed
+
+- **`/secure` socket join payloads were a bare string, not an object.** `SecureChatSocketClient`
+  emitted `join:secure-conversation` / `join:secure-device` with a bare id, but the server
+  destructures `{ conversationId }` / `{ deviceId }` off the payload — so the room join silently
+  no-op'd (no realtime delivery) and a `null` payload could even crash the server process. Now emits
+  the object shape; `SecureClientEvents` is corrected to match `SecureClientToServerEvents`. Caught by
+  the new e2e (the realtime fan-out step) and locked by a `socket.test.ts` regression.
+
 ### Not yet implemented
 
 - Real MLS `SecureChatCrypto` (ts-mls / OpenMLS-WASM); KeyPackage replenishment loop;
