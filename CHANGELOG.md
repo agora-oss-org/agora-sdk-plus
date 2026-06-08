@@ -6,6 +6,14 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Not yet implemented
+
+- Real MLS `SecureChatCrypto` (ts-mls / OpenMLS-WASM); KeyPackage replenishment loop;
+  passphrase backup/restore UX; backup-restore eviction recovery; 409 epoch-conflict rebase on
+  membership commits (the `resync()` seam is in place); multi-device (Phase 3).
+
+## [0.3.0] — 2026-06-07
+
 ### Added
 
 - **Handshake processing (Phase 2 Task 4)** — `useSecureHandshakes`, the recipient side of secure
@@ -18,12 +26,6 @@ All notable changes to Agora SDK Plus are documented here, following
   `subscribeGroupChange`, bumped by `rememberGroup`) that `useSecureMessages` subscribes to, so a
   join/Commit flushes buffered (`plaintext: null`) rows in place — no re-fetch. Exposes a `resync()`
   primitive for the future 409 epoch-conflict rebase.
-
-### Not yet implemented
-
-- Real MLS `SecureChatCrypto` (ts-mls / OpenMLS-WASM); KeyPackage replenishment loop;
-  passphrase backup/restore UX; backup-restore eviction recovery; 409 epoch-conflict rebase on
-  membership commits (the `resync()` seam is in place); multi-device (Phase 3).
 
 ## [0.2.0] — 2026-06-07
 
