@@ -17,6 +17,7 @@
     "paths": {
       "@agora-sdk/secure-chat-crypto": ["packages/secure-chat/crypto/src/index.ts"],
       "@agora-sdk/secure-chat-crypto/testing": ["packages/secure-chat/crypto/src/testing.ts"],
+      "@agora-sdk/secure-chat-crypto/ts-mls": ["packages/secure-chat/crypto/src/ts-mls/index.ts"],
       "@agora-sdk/secure-chat-core": ["packages/secure-chat/core/src/index.ts"]
     }
   },
