@@ -91,9 +91,33 @@ describe("TsMlsSecureChatCrypto: persistence round-trips", () => {
     expect(fromUtf8((await bob2.decryptMessage(bobGroup2, m2.ciphertext)).plaintext)).toBe("after reload");
   });
 
-  it("exportBackup/importBackup are explicitly deferred (task 5 UX)", async () => {
+});
+
+describe("TsMlsSecureChatCrypto: passphrase backup/restore", () => {
+  // argon2id at the high-memory profile is slow; allow extra time for these.
+  const SLOW = 30_000;
+
+  it("restores device identity + group state into a fresh instance, which keeps decrypting", async () => {
+    const { alice, bob, aliceGroup, bobGroup } = await twoPartyDM();
+    const m1 = await alice.encryptMessage(aliceGroup, new TextEncoder().encode("before backup"));
+    expect(fromUtf8((await bob.decryptMessage(bobGroup, m1.ciphertext)).plaintext)).toBe("before backup");
+
+    // bob backs up everything under a passphrase, then is rebuilt from the blob alone.
+    const backup = await bob.exportBackup("correct horse battery staple");
+    const bob2 = new TsMlsSecureChatCrypto();
+    const identity = await bob2.importBackup("correct horse battery staple", backup);
+    expect(identity.deviceId).toBe("bob-web"); // returns the restored identity (seam change)
+
+    // alice sends again; the restored bob decrypts using the same group handle.
+    const m2 = await alice.encryptMessage(aliceGroup, new TextEncoder().encode("after restore"));
+    expect(fromUtf8((await bob2.decryptMessage(bobGroup, m2.ciphertext)).plaintext)).toBe("after restore");
+  }, SLOW);
+
+  it("fails closed on the wrong passphrase (no partial restore)", async () => {
     const c = new TsMlsSecureChatCrypto();
-    await c.generateDeviceIdentity({ deviceId: "x" });
-    await expect(c.exportBackup("pw")).rejects.toThrow(/not implemented/);
-  });
+    await c.generateDeviceIdentity({ deviceId: "alice-web" });
+    const backup = await c.exportBackup("right");
+    const fresh = new TsMlsSecureChatCrypto();
+    await expect(fresh.importBackup("wrong", backup)).rejects.toThrow();
+  }, SLOW);
 });

@@ -6,12 +6,41 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- **Passphrase backup / restore (Phase 2 task 5).** Real at-rest crypto for key-material backups: a
+  new envelope codec in `@agora-sdk/secure-chat-crypto/ts-mls` (`backup.ts` — `sealBackup`/`openBackup`)
+  using **argon2id** (RFC 9106 high-memory profile: m=64 MiB, t=3, p=1, 32-byte key) +
+  **xchacha20poly1305** (24-byte random nonce, 16-byte random salt), with the non-secret envelope
+  descriptors bound as AEAD associated data so a tampered `kdf`/`cipher`/`version`/`kdfParams` fails
+  closed. The ts-mls core's `exportBackup`/`importBackup` now implement this for real (previously
+  threw), sealing the device identity + every joined group's MLS state and restoring them on a fresh
+  instance.
+- **`useSecureBackup` hook (`@agora-sdk/secure-chat-core`).** `backup(passphrase)` exports + uploads
+  the encrypted blob (base64 at the wire boundary) to the blind server; `restore(passphrase)` fetches
+  it, re-derives the identity + groups, idempotently re-asserts the device to recover its server row,
+  persists the device, and rebinds each conversation's group state by `conversationId` from the
+  server's conversation list (the server is the source of truth for membership). Exposes `needsBackup`
+  (a stale-backup signal that flips when a group advances), `backingUp`/`restoring`/`error`/
+  `lastBackupAt`, and `estimateStrength`.
+- **`estimatePassphraseStrength` (`@agora-sdk/secure-chat-core`).** A small, dependency-free 0–4
+  passphrase-strength estimator (length + character-class diversity + common-password penalty) for a
+  backup-passphrase meter — the blind server holds the ciphertext, so a weak passphrase is
+  offline-brute-forceable on a DB exfil (spec §16.5).
+
+### Changed
+
+- **`SecureChatCrypto.importBackup` now returns `Promise<DeviceIdentity>`** (was `Promise<void>`),
+  symmetric with `importDeviceState`, so the restore flow can re-assert the device server-side and
+  recover its row. Both the ts-mls core and the mock implement the new return. Deliberate, documented
+  in-repo seam change (the seam is owned here) — no cross-repo coordination.
+
 ### Not yet implemented
 
-- KeyPackage replenishment loop tuning; passphrase backup/restore UX (real argon2id KDF — the ts-mls
-  core's `export/importBackup` currently throw); backup-restore eviction recovery; metadata padding;
-  generation-counter replay/gap enforcement; 409 epoch-conflict rebase on membership commits (the
-  `resync()` seam is in place); `removeMember`/membership churn + multi-device + native (Phase 3).
+- KeyPackage replenishment loop tuning; backup-restore eviction recovery (now unblocked by task 5);
+  restore-on-new-browser e2e (needs a running agora-server); metadata padding; generation-counter
+  replay/gap enforcement; 409 epoch-conflict rebase on membership commits (the `resync()` seam is in
+  place); `removeMember`/membership churn + multi-device + native (Phase 3).
 
 ## [0.4.0] — 2026-06-08
 

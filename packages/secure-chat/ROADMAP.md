@@ -6,10 +6,12 @@ team's counterpart to agora-server's `CHAT_TODO.md` (server checklist) and `docs
 current state + cross-repo notes are in [STATUS.md](../../STATUS.md).
 
 **Where we are:** Server Phase 1 (the blind MLS Delivery Service) is shipped. The SDK's transport,
-**persistence**, React layer, handshake processing, and the **real ts-mls MLS core** are all done and
-released (**v0.4.0**), proven end-to-end by the dual mock/ts-mls e2e against a running agora-server.
-**Remaining Phase 2 = passphrase backup/restore (the DoD gap) + hardening** (generation-counter
-enforcement, KeyPackage-replenishment tuning, 409 epoch-conflict rebase, optional metadata hardening).
+**persistence**, React layer, handshake processing, the **real ts-mls MLS core** (released **v0.4.0**),
+and now **passphrase backup/restore** (real argon2id+AEAD core + `useSecureBackup` + strength meter)
+are all done. The Phase-2 Definition of Done is met in code; the one remaining proof is the
+**restore-on-new-browser e2e leg** (needs a running agora-server). **Remaining Phase 2 = hardening:**
+generation-counter enforcement, KeyPackage-replenishment tuning, 409 epoch-conflict rebase, eviction
+detect→restore wiring, optional metadata hardening, and the demo screen.
 
 The cardinal rule (see STATUS.md): **crypto lives here; the wire contract lives in agora-server's
 `@agora-server/contract`; the SDK depends on the contract, never the reverse.**
@@ -57,7 +59,8 @@ Both recurring gaps — "persist `privateState`" and "resolve `conversationId �
 - [x] Implement the **`conversationId → GroupHandle`** resolver and feed it to `useSecureMessages`
       (and the post-`createGroup` save in `useSecureConversations`). *(provider-cached `resolveGroup`/`rememberGroup`.)*
 - [ ] Handle eviction gracefully (Safari ITP / "clear browsing data") — detect missing state and fall
-      back to backup-restore (task 5) rather than crashing. *(deferred — depends on task 5.)*
+      back to backup-restore rather than crashing. *(unblocked — task 5's `useSecureBackup().restore()`
+      is the recovery primitive; the remaining work is the detect-missing-state → prompt-restore wiring.)*
 
 ### 3. KeyPackage replenishment loop
 - [ ] Publish a batch on registration (done) and **top up** on `secure:key-packages-low` (already wired
@@ -72,11 +75,19 @@ Both recurring gaps — "persist `privateState`" and "resolve `conversationId �
 - [ ] On `409 secure-chat/epoch-conflict` (membership commits): refetch handshakes, rebase, retry.
       *(deferred — needs a membership-write hook; `useSecureHandshakes` exposes `resync()` as the primitive.)*
 
-### 5. Passphrase backup / restore UX
-- [ ] `exportBackup(passphrase)` → `PUT /key-backup` on a schedule; restore on a new browser via
-      `GET /key-backup` → `importBackup`. The **real** core must use a real KDF (argon2id, conservative
-      params) + AEAD — the mock's is fake. Add a passphrase-strength meter (the server holds the
-      ciphertext blob, so a weak passphrase is offline-brute-forceable on a DB exfil).
+### 5. Passphrase backup / restore UX — ✅ done (crypto + hook + meter)
+- [x] Real KDF+AEAD envelope: `crypto/src/ts-mls/backup.ts` (`sealBackup`/`openBackup`) — **argon2id**
+      (m=64 MiB, t=3, p=1, 32-byte key) + **xchacha20poly1305** (random salt+nonce), envelope
+      descriptors bound as AEAD AAD (downgrade/tamper fails closed). The ts-mls core's
+      `exportBackup`/`importBackup` now implement it for real (device identity + every group's state);
+      `importBackup` returns the restored `DeviceIdentity` (seam change, mirrors `importDeviceState`).
+- [x] `useSecureBackup` hook: `backup(passphrase)` → `PUT /key-backup`; `restore(passphrase)` →
+      `GET /key-backup` → `importBackup` → idempotent device re-assert → persist device → rebind each
+      conversation's group state from the server conversation list. Plus `needsBackup` stale signal +
+      `estimatePassphraseStrength` meter.
+- [ ] **Deferred (needs a running agora-server):** the restore-on-new-browser **e2e** leg in
+      `e2e/secure-chat.e2e.ts` (alice backs up → a second client with an empty store restores via
+      passphrase → decrypts history). Tracked under task 7.
 
 ### 6. Metadata hardening *(optional, Phase 2+)*
 - [ ] Client-side ciphertext **size-bucket padding** (blunts traffic-shape fingerprinting; pairs with
@@ -91,8 +102,9 @@ Both recurring gaps — "persist `privateState`" and "resolve `conversationId �
       (register → DM → send → receive → reload-survives → restore-on-new-browser) and that the server
       only ever stored ciphertext. Consider wiring a secure-chat screen into `agora-demo`.
       *(`e2e/secure-chat.e2e.ts` — opt-in `pnpm test:e2e`, real transport + MockSecureChatCrypto + two
-      devices; covers register→DM→send→receive→realtime→reload + server-blindness. Restore-on-new-browser
-      via passphrase backup stays with task 5; the demo screen is still TODO.)*
+      devices; covers register→DM→send→receive→realtime→reload + server-blindness. **TODO (needs the
+      server up):** add the restore-on-new-browser leg now that task 5's backup/restore exists; the
+      demo screen is still TODO.)*
 
 ---
 
@@ -119,5 +131,7 @@ passphrase backup, with the server storing **only ciphertext**.
 1. ts-mls vs OpenMLS-WASM — ✅ **decided: ts-mls** (task 1; see STATUS.md 2026-06-08).
 2. Chosen core must enforce generation-counter replay/gap detection — ts-mls surfaces it; enforcement still **open** (task 1).
 3. Ciphertext padding strategy (task 6).
-4. Backup-passphrase strength enforcement (task 5).
+4. Backup-passphrase strength — ✅ **addressed**: `estimatePassphraseStrength` (coarse client-side
+   meter) + a memory-hard argon2id KDF (task 5). Hard *enforcement* (reject below a threshold) is left
+   to the app/UX.
 5. Channel committer (External Commits) — needs server coordination before channels.

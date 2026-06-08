@@ -27,6 +27,12 @@ export type {
   UseSecureHandshakesOptions,
   UseSecureHandshakesValues,
 } from "./hooks/useSecureHandshakes.js";
+export { useSecureBackup } from "./hooks/useSecureBackup.js";
+export type { UseSecureBackupValues } from "./hooks/useSecureBackup.js";
+
+// ── backup (passphrase strength meter) ────────────────────────────────────────
+export { estimatePassphraseStrength } from "./backup/passphrase-strength.js";
+export type { PassphraseStrength } from "./backup/passphrase-strength.js";
 
 // ── transport (for advanced / non-React use) ─────────────────────────────────
 export { SecureChatRestClient } from "./transport/rest.js";

@@ -101,6 +101,18 @@ describe("MockSecureChatCrypto passphrase backup", () => {
       /wrong passphrase/
     );
   });
+
+  it("returns the restored device identity (symmetric with importDeviceState)", async () => {
+    const alice = new MockSecureChatCrypto();
+    const { identity } = await alice.generateDeviceIdentity({ deviceId: "alice-dev", ciphersuite: 1 });
+    const backup = await alice.exportBackup("correct horse");
+
+    const restored = new MockSecureChatCrypto();
+    const got = await restored.importBackup("correct horse", backup);
+    expect(got.deviceId).toBe("alice-dev");
+    expect(got.ciphersuite).toBe(1);
+    expect(Array.from(got.signaturePublicKey)).toEqual(Array.from(identity.signaturePublicKey));
+  });
 });
 
 describe("MockSecureChatCrypto device-state persistence", () => {

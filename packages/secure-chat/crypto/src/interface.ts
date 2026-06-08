@@ -102,6 +102,24 @@ export interface SecureChatCrypto {
   importDeviceState(state: Uint8Array): Promise<DeviceIdentity>;
 
   // ── passphrase backup of all local key material ─────────────────────────────
+  /**
+   * Seal all local key material (device identity + private keys + every joined group's state) into a
+   * passphrase-encrypted blob for upload to the blind server. The real cores use a memory-hard KDF
+   * (argon2id) + an AEAD; the server stores the ciphertext verbatim and can never decrypt it.
+   *
+   * @param passphrase - The user's backup passphrase (never sent to the server).
+   * @returns The encrypted backup envelope (base64-encode `blob`/`nonce` at the wire boundary).
+   */
   exportBackup(passphrase: string): Promise<PassphraseBackup>;
-  importBackup(passphrase: string, backup: PassphraseBackup): Promise<void>;
+  /**
+   * Restore local key material from a {@link exportBackup} envelope, repopulating this instance's
+   * device identity and group states. Symmetric with {@link importDeviceState}, it returns the
+   * restored identity so a caller can re-assert the device server-side (idempotently) and rehydrate UI.
+   *
+   * @param passphrase - The user's backup passphrase.
+   * @param backup - The encrypted envelope fetched from the server.
+   * @returns The restored device identity.
+   * @throws {Error} On a wrong passphrase or a corrupt/tampered backup (fails closed — no partial restore).
+   */
+  importBackup(passphrase: string, backup: PassphraseBackup): Promise<DeviceIdentity>;
 }

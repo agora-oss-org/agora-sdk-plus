@@ -22,6 +22,7 @@ import type {
   SecureChatCrypto, DeviceIdentity, KeyPackageBundle, GroupHandle, CommitResult, TargetedWelcome, PassphraseBackup,
 } from "../interface.js";
 import { DEFAULT_CIPHERSUITE_ID, loadCiphersuite } from "./ciphersuite.js";
+import { sealBackup, openBackup } from "./backup.js";
 import { toHex, fromHex } from "./hex.js";
 
 const utf8 = (s: string) => new TextEncoder().encode(s);
@@ -276,13 +277,35 @@ export class TsMlsSecureChatCrypto implements SecureChatCrypto {
     return { deviceId: p.deviceId, signaturePublicKey: this.device.publicKey, credential: utf8(p.deviceId), ciphersuite: p.ciphersuite };
   }
 
-  // Backup/restore UX (real argon2id KDF + AEAD) is Phase 2 task 5. async so callers get a rejected
-  // promise, not a synchronous throw.
-  async exportBackup(_passphrase: string): Promise<PassphraseBackup> {
-    throw new Error("secure-chat: passphrase backup is not implemented in this core yet (Phase 2 task 5)");
+  // Passphrase backup of ALL local key material: the device identity (incl. the signature private
+  // key + pending KeyPackages, via serializeDeviceState) and every joined group's full MLS state.
+  // The argon2id KDF + AEAD live in ./backup.ts; here we just (de)serialize the payload. The blob is
+  // opaque to the blind server — only ciphertext crosses the wire.
+  async exportBackup(passphrase: string): Promise<PassphraseBackup> {
+    const payload = {
+      v: 1,
+      device: toHex(this.serializeDeviceState()),
+      groups: [...this.groups.values()].map((st) => toHex(encodeGroupState(st))),
+    };
+    return sealBackup(utf8(JSON.stringify(payload)), passphrase);
   }
-  async importBackup(_passphrase: string, _backup: PassphraseBackup): Promise<void> {
-    throw new Error("secure-chat: passphrase restore is not implemented in this core yet (Phase 2 task 5)");
+
+  async importBackup(passphrase: string, backup: PassphraseBackup): Promise<DeviceIdentity> {
+    const plain = await openBackup(backup, passphrase);
+    const payload = JSON.parse(new TextDecoder().decode(plain)) as {
+      v: number; device: string; groups: string[];
+    };
+    if (payload.v !== 1) throw new Error(`secure-chat: unsupported backup payload version ${payload.v}`);
+    // Restore the device identity first (also clears + repopulates the pending KeyPackages).
+    const identity = await this.importDeviceState(fromHex(payload.device));
+    // Then every group's full state, keyed by its MLS group id (mirrors importGroupState).
+    for (const g of payload.groups) {
+      const decoded = decodeGroupState(fromHex(g), 0);
+      if (!decoded) throw new Error("secure-chat: corrupt group state in backup");
+      const clientState: ClientState = { ...decoded[0], clientConfig: defaultClientConfig };
+      this.groups.set(toHex(clientState.groupContext.groupId), clientState);
+    }
+    return identity;
   }
 
   /** Serialize identity (incl. signature private key) + the pending KeyPackage store to an opaque blob. */

@@ -82,3 +82,14 @@ is now **ESM-only** (it depends on the ESM-only core + bundler-only `@agora-sdk/
 ts-mls leaves `@noble/hashes` undeclared, so the crypto package declares the `@noble/*` primitives
 directly; `makeKeyPackageRef`/`getGroupMembers`/`defaultClientConfig` aren't re-exported from the
 ts-mls root and are deep-imported via its `./*.js` exports.
+
+### Passphrase backup / restore (2026-06-08)
+
+Phase 2 task 5 landed: real at-rest backup crypto + the `useSecureBackup` hook + a passphrase-strength
+meter (see CHANGELOG `[Unreleased]`). Envelope = **argon2id** (m=64 MiB, t=3, p=1) + **xchacha20poly1305**
+(`crypto/src/ts-mls/backup.ts`), with envelope descriptors bound as AEAD AAD. `SecureChatCrypto.importBackup`
+now returns the restored `DeviceIdentity` (deliberate in-repo seam change, mirrors `importDeviceState`).
+Restore is **server-assisted**: the backup is conversationId-agnostic; the hook rebinds each
+conversation's group state from the server's conversation list. With this, the Phase-2 Definition of
+Done is met **in code** — the one open proof is the restore-on-new-browser **e2e leg**, deferred until
+a local agora-server is running again.

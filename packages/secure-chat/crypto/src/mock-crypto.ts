@@ -285,6 +285,7 @@ export class MockSecureChatCrypto implements SecureChatCrypto {
       magic: BACKUP_MAGIC,
       identityPriv: this.privateState ? toHex(this.privateState) : null,
       deviceId: this.identity?.deviceId ?? null,
+      ciphersuite: this.identity?.ciphersuite ?? 1,
       groups,
     });
     const salt = bytesFrom(`salt:${passphrase}`, 16);
@@ -299,7 +300,7 @@ export class MockSecureChatCrypto implements SecureChatCrypto {
     };
   }
 
-  async importBackup(passphrase: string, backup: PassphraseBackup): Promise<void> {
+  async importBackup(passphrase: string, backup: PassphraseBackup): Promise<DeviceIdentity> {
     const salt =
       (backup.kdfParams as { salt?: string }).salt ?? toHex(bytesFrom(`salt:${passphrase}`, 16));
     const key = keystream(enc.encode(`${passphrase}:${salt}`), backup.blob.length);
@@ -308,6 +309,7 @@ export class MockSecureChatCrypto implements SecureChatCrypto {
       magic: string;
       identityPriv: string | null;
       deviceId: string | null;
+      ciphersuite?: number;
       groups: { id: string; secret: string; epoch: string }[];
     };
     try {
@@ -315,12 +317,23 @@ export class MockSecureChatCrypto implements SecureChatCrypto {
     } catch {
       throw new Error("mock: backup decrypt failed (wrong passphrase?)");
     }
-    if (parsed.magic !== BACKUP_MAGIC) {
+    if (parsed.magic !== BACKUP_MAGIC || !parsed.deviceId) {
       throw new Error("mock: backup decrypt failed (wrong passphrase?)");
     }
     if (parsed.identityPriv) this.privateState = fromHex(parsed.identityPriv);
     for (const g of parsed.groups) {
       this.groups.set(g.id, { secret: fromHex(g.secret), epoch: BigInt(g.epoch) });
     }
+    // Rebuild the (deterministic) identity so the restored mock is usable, and return it — symmetric
+    // with importDeviceState, so the restore flow can re-assert the device server-side.
+    const ciphersuite = parsed.ciphersuite ?? 1;
+    const identity: DeviceIdentity = {
+      deviceId: parsed.deviceId,
+      signaturePublicKey: bytesFrom(`sig:${parsed.deviceId}`, 32),
+      credential: enc.encode(parsed.deviceId),
+      ciphersuite,
+    };
+    this.identity = identity;
+    return identity;
   }
 }
