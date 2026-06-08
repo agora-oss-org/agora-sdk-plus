@@ -66,7 +66,8 @@ export function useSecureMessages(
   conversationId: string,
   options: UseSecureMessagesOptions = {}
 ): UseSecureMessagesValues {
-  const { rest, crypto, socket, repo, resolveGroup } = useSecureChat();
+  const { rest, crypto, socket, repo, resolveGroup, getGroupVersion, subscribeGroupChange } =
+    useSecureChat();
 
   const [messages, setMessages] = useState<DecryptedSecureMessage[]>([]);
   const [before, setBefore] = useState<string | undefined>(undefined);
@@ -76,10 +77,21 @@ export function useSecureMessages(
   const [group, setGroup] = useState<GroupHandle | null>(options.group ?? null);
   const [senderDeviceId, setSenderDeviceId] = useState<string | undefined>(options.senderDeviceId);
 
+  // Bumps when THIS conversation's group handle advances (a join or a processed Commit, driven by
+  // useSecureHandshakes calling rememberGroup). Feeds the group-resolve effect's deps so we re-resolve
+  // the now-current handle and flush buffered (plaintext:null) rows.
+  const [groupVersion, setGroupVersion] = useState(0);
+
   // Latest messages, read by the "decrypt history once the group resolves" effect below without
   // making `messages` one of its deps (which would loop).
   const messagesRef = useRef<DecryptedSecureMessage[]>(messages);
   messagesRef.current = messages;
+
+  // Subscribe to provider group-change signals; only a change to OUR conversation's version updates
+  // state (React bails on an unchanged primitive), so unrelated conversations don't re-resolve us.
+  useEffect(() => {
+    return subscribeGroupChange(() => setGroupVersion(getGroupVersion(conversationId)));
+  }, [subscribeGroupChange, getGroupVersion, conversationId]);
 
   // Resolve the group handle: explicit override, else persisted state.
   useEffect(() => {
@@ -101,7 +113,8 @@ export function useSecureMessages(
     return () => {
       alive = false;
     };
-  }, [options.group, conversationId, resolveGroup]);
+    // `groupVersion` re-runs this when a Commit/join advances the handle → flushes buffered rows.
+  }, [options.group, conversationId, resolveGroup, groupVersion]);
 
   // Resolve the sender device id: explicit override, else persisted device row.
   useEffect(() => {

@@ -67,10 +67,13 @@ both **task 2 (persistence)** below. Land that and the hooks light up.
       in `useSecureDevice`) and proactively via `GET /key-packages/count`. Tune the low-water threshold.
 
 ### 4. Handshake processing + ordering
-- [ ] On connect: `GET /devices/:id/handshakes?since=<lastSeq>`, then live via `secure:welcome` /
+- [x] On connect: `GET /devices/:id/handshakes?since=<lastSeq>`, then live via `secure:welcome` /
       `secure:handshake`. Process Welcomes/Commits in **`seq` order**; persist the cursor.
-- [ ] **Buffer** application messages whose epoch the client hasn't reached yet; flush as Commits land.
+      *(`useSecureHandshakes` — serialized seq-ordered queue, dedupe, cursor persistence, room re-join.)*
+- [x] **Buffer** application messages whose epoch the client hasn't reached yet; flush as Commits land.
+      *(provider group-version signal → `useSecureMessages` re-resolves + re-decrypts in place.)*
 - [ ] On `409 secure-chat/epoch-conflict` (membership commits): refetch handshakes, rebase, retry.
+      *(deferred — needs a membership-write hook; `useSecureHandshakes` exposes `resync()` as the primitive.)*
 
 ### 5. Passphrase backup / restore UX
 - [ ] `exportBackup(passphrase)` → `PUT /key-backup` on a schedule; restore on a new browser via

@@ -6,10 +6,24 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- **Handshake processing (Phase 2 Task 4)** — `useSecureHandshakes`, the recipient side of secure
+  chat. On connect it drains the device's handshake inbox (`fetchHandshakes(since=cursor)`, paged) and
+  then processes live `secure:welcome` / `secure:handshake` events, all funneled through one
+  serialized, `seq`-ordered, idempotent path that persists the delivery cursor. A processed Welcome
+  joins the group (`rememberGroup`) + joins its socket room; a Commit advances the epoch; live events
+  arriving during catch-up are buffered and replayed in `seq` order so none are dropped. Known rooms
+  are re-joined after a reload. Plus a provider group-version signal (`getGroupVersion` /
+  `subscribeGroupChange`, bumped by `rememberGroup`) that `useSecureMessages` subscribes to, so a
+  join/Commit flushes buffered (`plaintext: null`) rows in place — no re-fetch. Exposes a `resync()`
+  primitive for the future 409 epoch-conflict rebase.
+
 ### Not yet implemented
 
 - Real MLS `SecureChatCrypto` (ts-mls / OpenMLS-WASM); KeyPackage replenishment loop;
-  passphrase backup/restore UX; backup-restore eviction recovery; handshake processing.
+  passphrase backup/restore UX; backup-restore eviction recovery; 409 epoch-conflict rebase on
+  membership commits (the `resync()` seam is in place); multi-device (Phase 3).
 
 ## [0.2.0] — 2026-06-07
 

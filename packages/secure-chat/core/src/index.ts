@@ -22,6 +22,11 @@ export type {
   UseSecureMessagesValues,
   DecryptedSecureMessage,
 } from "./hooks/useSecureMessages.js";
+export { useSecureHandshakes } from "./hooks/useSecureHandshakes.js";
+export type {
+  UseSecureHandshakesOptions,
+  UseSecureHandshakesValues,
+} from "./hooks/useSecureHandshakes.js";
 
 // ── transport (for advanced / non-React use) ─────────────────────────────────
 export { SecureChatRestClient } from "./transport/rest.js";

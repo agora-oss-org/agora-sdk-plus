@@ -33,6 +33,16 @@ export interface SecureChatContextValue {
   resolveGroup: (conversationId: string) => Promise<GroupHandle | null>;
   /** Cache + persist a conversation's group handle (after createGroup / processWelcome). */
   rememberGroup: (conversationId: string, handle: GroupHandle) => Promise<void>;
+  /**
+   * Current change-version for a conversation's group handle. Bumps every time the handle advances
+   * (a join or a processed Commit), so consumers can detect "the group moved" without diffing handles.
+   */
+  getGroupVersion: (conversationId: string) => number;
+  /**
+   * Subscribe to group-handle changes across all conversations (fired by {@link rememberGroup}).
+   * @returns An unsubscribe function.
+   */
+  subscribeGroupChange: (listener: () => void) => () => void;
   /** The Agora project id these clients are scoped to. */
   projectId: string;
 }
@@ -118,6 +128,13 @@ export function SecureChatProvider({
   // instance (fresh cache), not a live prop change on the same mounted provider.
   const groupCache = useRef(new Map<string, GroupHandle>());
 
+  // Per-conversation change counter, bumped whenever a group handle advances (a join or a processed
+  // Commit). Lets useSecureMessages re-resolve and flush buffered (undecrypted) rows without a
+  // re-fetch. Held in a ref + listener set so a bump notifies consumers WITHOUT re-rendering the
+  // provider (and thus rebuilding rest/socket/repo).
+  const groupVersion = useRef(new Map<string, number>());
+  const groupListeners = useRef(new Set<() => void>());
+
   const resolveGroup = useCallback(
     async (conversationId: string): Promise<GroupHandle | null> => {
       const cached = groupCache.current.get(conversationId);
@@ -136,17 +153,52 @@ export function SecureChatProvider({
       groupCache.current.set(conversationId, handle);
       const bytes = await crypto.exportGroupState(handle);
       await repo.saveGroupState(conversationId, bytes);
+      // Signal that this conversation's group advanced, so message hooks re-resolve + flush.
+      groupVersion.current.set(conversationId, (groupVersion.current.get(conversationId) ?? 0) + 1);
+      groupListeners.current.forEach((l) => l());
     },
     [repo, crypto]
   );
+
+  const getGroupVersion = useCallback(
+    (conversationId: string): number => groupVersion.current.get(conversationId) ?? 0,
+    []
+  );
+
+  const subscribeGroupChange = useCallback((listener: () => void): (() => void) => {
+    groupListeners.current.add(listener);
+    return () => {
+      groupListeners.current.delete(listener);
+    };
+  }, []);
 
   useEffect(() => {
     return () => socket.disconnect();
   }, [socket]);
 
   const value = useMemo<SecureChatContextValue>(
-    () => ({ rest, socket, crypto, repo, resolveGroup, rememberGroup, projectId }),
-    [rest, socket, crypto, repo, resolveGroup, rememberGroup, projectId]
+    () => ({
+      rest,
+      socket,
+      crypto,
+      repo,
+      resolveGroup,
+      rememberGroup,
+      getGroupVersion,
+      subscribeGroupChange,
+      projectId,
+    }),
+    [
+      rest,
+      socket,
+      crypto,
+      repo,
+      resolveGroup,
+      rememberGroup,
+      getGroupVersion,
+      subscribeGroupChange,
+      projectId,
+    ]
   );
 
   return <SecureChatContext.Provider value={value}>{children}</SecureChatContext.Provider>;
