@@ -33,6 +33,14 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Changed
 
+- **Wire types now come from the published `@agora-server/contract`** (`^0.9.3`, a `dependency` of
+  `@agora-sdk/secure-chat-core`). The former byte-faithful stand-in copy in
+  `core/src/contract/` is replaced by a thin **type-only re-export** of the contract's secure-chat
+  surface — one source of truth, zero drift. (The contract added the request-body types via `z.input`
+  of its zod schemas in 0.9.3, so the SDK no longer hand-maintains any wire types.) The re-export is
+  type-only, so core's dual ESM/CJS build never `require()`s the ESM-only contract at runtime; the
+  internal import path is unchanged, so call sites didn't churn. Verified by typecheck + unit +
+  build-all + verify:dist + the dual mock/ts-mls e2e.
 - **`@agora-sdk/secure-chat-react-js` is now ESM-only.** It depends on the ESM-only ts-mls core and
   on bundler-only `@agora-sdk/core` (see `UPSTREAM_FIX.md`), so its CJS output never loaded at runtime;
   dropping it removes a misleading artifact. Web/React consumers always bundle (Vite/webpack/Metro).

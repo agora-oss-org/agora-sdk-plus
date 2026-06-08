@@ -9,7 +9,8 @@ A running ledger of what's built, what's stubbed, and the cross-repo work this d
   and the deterministic `MockSecureChatCrypto` on the `./testing` subpath. Dependency-free.
 - `@agora-sdk/secure-chat-core`: REST transport (all endpoints from `docs/SECURE_CHAT.md` §9),
   `/secure` socket client, `SecureChatProvider` + hooks, base64 utils. Depends on the crypto package
-  for the interface; carries a stand-in copy of the wire types.
+  for the interface; consumes the wire types from the published `@agora-server/contract` (type-only
+  re-export in `core/src/contract/`).
 - Platform packages: `react-js` (Phase 2 web, crypto/persistence placeholders), `react-native` +
   `expo` (Phase 3 stubs).
 
@@ -25,7 +26,7 @@ package) and would have published AGPL crypto. The corrected model, agreed with 
 | Artifact | Home | Relationship |
 |---|---|---|
 | `SecureChatCrypto` interface + mock + the real ts-mls core (`./ts-mls`) | **this repo** (`@agora-sdk/secure-chat-crypto`, Apache-2.0) | agora-server **dev-depends** on it for tests — a consumer, like agora-demo consumes the published SDK |
-| secure-chat wire types (`Secure*Model`, request bodies) | **agora-server** (`@agora-server/contract`, Apache-2.0) | this SDK **depends on** it; we keep a stand-in copy until it's published |
+| secure-chat wire types (`Secure*Model`, request bodies) | **agora-server** (`@agora-server/contract`, Apache-2.0) | this SDK **depends on** it (`^0.9.3`); `core/src/contract/` is a type-only re-export (the stand-in copy is gone) |
 
 Why this is right: it removes the dependency inversion, and it dissolves the license problem — the
 seam was AGPL-3.0 inside the AGPL server; moved into this Apache-2.0 repo (sole-author relicense) it
@@ -43,9 +44,14 @@ becomes safely consumable by third parties.
   when Phase 2 builds the real core here.
 - Update the server's `CHAT_TODO.md` to this model (crypto → SDK; contract stays; SDK builds on it).
 
-### this repo (when `@agora-server/contract` is published)
-- Add `@agora-server/contract` as a dependency, delete `core/src/contract/`, and repoint imports to
-  `import type { ... } from "@agora-server/contract"`. Re-verify build + typecheck.
+### this repo (when `@agora-server/contract` is published) — ✅ done (2026-06-08)
+- `@agora-server/contract@^0.9.3` is a `dependency` of `@agora-sdk/secure-chat-core`. The former
+  byte-faithful stand-in copy is replaced by a **type-only re-export** in `core/src/contract/` (kept as
+  a thin barrel so the internal import path is stable and the public surface stays scoped to
+  secure-chat). The contract added the request-**body** types (`z.input` of its schemas) in 0.9.3, so
+  the SDK no longer hand-maintains any wire types. Verified: typecheck + unit + build-all + verify:dist
+  + dual e2e all green. *(If a literal file deletion + direct `@agora-server/contract` imports is
+  preferred over the re-export barrel, that's a quick follow-up.)*
 
 ## What's next — Phase 2 (web) and Phase 3 (native)
 

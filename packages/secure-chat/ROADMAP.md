@@ -103,8 +103,9 @@ passphrase backup, with the server storing **only ciphertext**.
 ## Cross-repo dependencies & coordination
 
 - **Consume the mock** from `@agora-sdk/secure-chat-crypto/testing` (already exported).
-- **`@agora-server/contract`** — depend on it for wire types once agora-server publishes it (Apache-2.0); then
-  delete `core/src/contract/` and import from it. Until then keep the stand-in byte-faithful.
+- **`@agora-server/contract`** — ✅ done: published, and a `dependency` of `@agora-sdk/secure-chat-core`
+  (`^0.9.3`). `core/src/contract/` is now a type-only re-export of its secure-chat surface (no more
+  copied types). The contract exports the request-body types (`z.input` of its schemas) as of 0.9.3.
 - **Coordinate with the server team on:** publishing `@agora-server/contract`; retiring their
   `packages/secure-chat-core/` in favor of consuming our crypto in tests; and the **channel committer
   strategy** (MLS External Commits) *before* building `channel`-type conversations (spec §16.1).

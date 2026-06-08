@@ -35,7 +35,7 @@ flowchart TD
   end
 
   coreP -->|interface| crypto
-  coreP -.->|wire types: stand-in today| contract
+  coreP -->|wire types: depends on| contract
   coreP -->|peer dep| core_sdk
   webP --> coreP
   rnP --> coreP

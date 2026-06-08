@@ -88,13 +88,14 @@ The dependency arrow is **SDK → contract**, and the **crypto seam is client co
   `./ts-mls` pulls in ts-mls. agora-server **consumes** it as a test devDependency (it only used
   the mock to simulate a client), so it must not live in the AGPL server repo.
 - **Wire types** — owned by agora-server's `@agora-server/contract` (Apache-2.0). This SDK **depends on**
-  it. Until `@agora-server/contract` is published, `packages/secure-chat/core/src/contract/` holds a
-  **stand-in copy** (types-only, byte-faithful to `contract/src/secure-chat.ts`).
+  it (a `dependency` of `@agora-sdk/secure-chat-core`, `^0.9.3`). `packages/secure-chat/core/src/contract/`
+  is now a thin **type-only re-export** of the contract's secure-chat surface (the former byte-faithful
+  stand-in copy is gone — one source of truth, zero drift). The internal import path is kept so call
+  sites don't churn; the re-export is type-only, so core's dual ESM/CJS build never `require()`s the
+  (ESM-only) contract at runtime.
 
 **Do not** create an `@agora-sdk/secure-chat-contract` re-exported by `@agora-server/contract` — that
-inverts the dependency. When the contract publishes, delete the stand-in and import from
-`@agora-server/contract`. Keep the stand-in byte-faithful in the meantime; see `STATUS.md` for the cross-repo
-plan.
+inverts the dependency. The arrow is **SDK → contract**; see `STATUS.md` for the cross-repo plan.
 
 ## Development commands
 
@@ -114,8 +115,9 @@ plan.
   it has its own config/glob (`e2e/**`) so `pnpm test` and CI stay server-free. See README "Develop".
 
 > `pnpm install` resolves `@agora-sdk/core` from npm; the crypto seam comes from the in-repo
-> `@agora-sdk/secure-chat-crypto` workspace package, and the wire types from the in-repo stand-in
-> (until `@agora-server/contract` is published). No cross-repo linking is required to build.
+> `@agora-sdk/secure-chat-crypto` workspace package, and the wire types from the published
+> `@agora-server/contract` (re-exported type-only by `core/src/contract/`). No cross-repo linking is
+> required to build.
 
 ## Engineering standards (enforced)
 
@@ -164,10 +166,10 @@ comments are invisible to generated docs and do **not** count.
 - Functions/hooks: `@param` per parameter, `@returns`, and `@throws {ErrorType}` for each error a
   caller can hit. Add an `@example` for anything non-trivial (providers, hooks, clients).
 - Interface/type members get a one-line `/** … */` each.
-- **Exception — byte-faithful copies:** do **not** add or alter doc comments in the in-repo wire-type
-  stand-in (`packages/secure-chat/core/src/contract/`). It must stay byte-faithful to agora-server's
-  `contract/src/secure-chat.ts` so the eventual swap to `@agora-server/contract` is clean. Only document
-  original code authored here.
+- **Exception — re-exported wire types:** `packages/secure-chat/core/src/contract/` only **re-exports**
+  the secure-chat types from `@agora-server/contract` (type-only); the type docs live in the contract,
+  so no per-symbol TSDoc is added here (the file's header comment is enough). Document original code
+  authored here.
 - `pnpm run typecheck` MUST stay green after doc changes.
 
 ### 3. Good comments — explain *why*, not *what*
