@@ -8,6 +8,18 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Added
 
+- **Real MLS core (Phase 2 task 1).** `@agora-sdk/secure-chat-crypto/ts-mls` —
+  `createTsMlsSecureChatCrypto()`, a real RFC 9420 implementation of `SecureChatCrypto` built on
+  **ts-mls** (pure TS; ciphersuite 1), on an opt-in **ESM-only** subpath so the bare entry + `./testing`
+  mock stay dependency-free. Recipients join from the Welcome alone (ts-mls `ratchetTreeExtension`);
+  group + device state persist via ts-mls's `encodeGroupState`/`decodeGroupState` into the existing
+  IndexedDB layer (no persistence-layer changes). `react-js`'s `createWebSecureChatCrypto()` now returns
+  it. Proven by running the foundation e2e a second time with the real core (genuine MLS blobs through
+  the blind server; recipient joins from the Welcome alone) — `pnpm test:e2e` now runs mock + ts-mls
+  (14 tests). Pulls `ts-mls` + the `@noble/*` primitives it needs (ts-mls leaves `@noble/hashes`
+  undeclared). Backup KDF (task 5), metadata padding (task 6), generation-counter enforcement, and
+  `removeMember`/native (Phase 3) remain deferred.
+
 - **Foundation-validation e2e (test infra).** An opt-in Node suite (`e2e/secure-chat.e2e.ts`,
   `e2e/bootstrap.ts`, `vitest.e2e.config.ts`, `pnpm test:e2e`) that drives the **real**
   `SecureChatRestClient` + `SecureChatSocketClient` against a **locally running agora-server** with
@@ -21,6 +33,10 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Changed
 
+- **`@agora-sdk/secure-chat-react-js` is now ESM-only.** It depends on the ESM-only ts-mls core and
+  on bundler-only `@agora-sdk/core` (see `UPSTREAM_FIX.md`), so its CJS output never loaded at runtime;
+  dropping it removes a misleading artifact. Web/React consumers always bundle (Vite/webpack/Metro).
+  `verify-dist` now allows ESM-only packages (detected by an ESM `main`). `react-native`/`expo` stay dual.
 - **Engineering standards now lead with security.** `CLAUDE.md` adds a new enforced standard #1,
   "Security first — this is end-to-end-encryption code" (no plaintext/keys on the wire or in logs,
   respect the crypto seam + CSPRNG, preserve epoch/replay invariants, fail closed, treat the server as
@@ -38,9 +54,10 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Not yet implemented
 
-- Real MLS `SecureChatCrypto` (ts-mls / OpenMLS-WASM); KeyPackage replenishment loop;
-  passphrase backup/restore UX; backup-restore eviction recovery; 409 epoch-conflict rebase on
-  membership commits (the `resync()` seam is in place); multi-device (Phase 3).
+- KeyPackage replenishment loop tuning; passphrase backup/restore UX (real argon2id KDF — the ts-mls
+  core's `export/importBackup` currently throw); backup-restore eviction recovery; metadata padding;
+  generation-counter replay/gap enforcement; 409 epoch-conflict rebase on membership commits (the
+  `resync()` seam is in place); `removeMember`/membership churn + multi-device + native (Phase 3).
 
 ## [0.3.0] — 2026-06-07
 

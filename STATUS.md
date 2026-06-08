@@ -58,3 +58,21 @@ In short: Phase 2 makes the crypto real (implement `SecureChatCrypto` in
 `@agora-sdk/secure-chat-crypto`, wire it + IndexedDB into `@agora-sdk/secure-chat-react-js`) and
 persists group state; Phase 3 brings native (RN/Expo keystore, multi-device). Open design questions
 (channel committer, padding, replay detection) are tracked in the roadmap.
+
+### MLS core decision (2026-06-08)
+
+**Chosen: [ts-mls](https://github.com/LukaJCB/ts-mls) `1.6.2`** — pure TypeScript (`@hpke/core` +
+`@noble/*`, no WASM) — over OpenMLS→WASM and mls-rs→WASM. Rationale: the same JS runs on web now and
+RN/Expo later with **no native bridge** (the fastest web→native path), and its functional API maps
+cleanly onto the `SecureChatCrypto` seam. Tradeoff accepted: younger / less audited than OpenMLS,
+mitigated by keeping it behind the interface so it can be swapped without touching call sites.
+
+Shipped as `createTsMlsSecureChatCrypto()` on the opt-in **ESM-only** subpath
+`@agora-sdk/secure-chat-crypto/ts-mls` (bare entry + `./testing` mock stay dependency-free). Ciphersuite
+**1** (`MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519`) default. Recipient joins from the Welcome alone
+(`ratchetTreeExtension`); group + device state persist via ts-mls `encode/decodeGroupState`. Proven by
+the dual mock+ts-mls e2e against a running agora-server. **Consequence:** `@agora-sdk/secure-chat-react-js`
+is now **ESM-only** (it depends on the ESM-only core + bundler-only `@agora-sdk/core`). Notes:
+ts-mls leaves `@noble/hashes` undeclared, so the crypto package declares the `@noble/*` primitives
+directly; `makeKeyPackageRef`/`getGroupMembers`/`defaultClientConfig` aren't re-exported from the
+ts-mls root and are deep-imported via its `./*.js` exports.

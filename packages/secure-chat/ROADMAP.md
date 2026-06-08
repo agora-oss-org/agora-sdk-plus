@@ -20,8 +20,8 @@ The structure is in place — Phase 2 is mostly *filling defined seams*, not new
 
 | What | File | State today |
 |---|---|---|
-| Real `SecureChatCrypto` | `crypto/src/` (`@agora-sdk/secure-chat-crypto`) | interface + `MockSecureChatCrypto` (`./testing`). **Add the real core** as an opt-in subpath (e.g. `./ts-mls`). |
-| Web crypto + persistence wiring | `react-js/src/crypto-web.ts` | `createWebSecureChatCrypto()` is a throwing stub — **wire the real core + IndexedDB here**. |
+| Real `SecureChatCrypto` | `crypto/src/ts-mls/` (`@agora-sdk/secure-chat-crypto/ts-mls`) | ✅ **done** — real ts-mls core on the opt-in ESM-only subpath; mock stays on `./testing`. |
+| Web crypto + persistence wiring | `react-js/src/crypto-web.ts` | ✅ `createWebSecureChatCrypto()` returns the real ts-mls core; group state persists via the IndexedDB store. |
 | Device registration + KeyPackages | `core/src/hooks/useSecureDevice.tsx` | transport + low-water auto-replenish done; **needs `privateState` persistence + a stable persisted `deviceId`**. |
 | DM creation (claim→createGroup→relay) | `core/src/hooks/useSecureConversations.tsx` | transport flow done; **needs group-state persistence after `createGroup`**. |
 | Send/receive + decrypt | `core/src/hooks/useSecureMessages.tsx` | encrypt/decrypt done *given a `GroupHandle`*; **needs the `conversationId → GroupHandle` resolver** (the persistence layer). |
@@ -35,22 +35,17 @@ both **task 2 (persistence)** below. Land that and the hooks light up.
 ## Phase 2 — web client (the work)
 
 ### 1. Pick + implement the MLS core
-- [ ] **Decide ts-mls vs OpenMLS→WASM.** Criteria:
-
-  | | ts-mls | OpenMLS→WASM |
-  |---|---|---|
-  | Language | pure TS — same JS on web/RN/Expo | Rust→WASM; RN/Expo need a native bridge (Phase 3) |
-  | Audit | younger, less audited | audited, mature |
-  | Bundle | smaller, no WASM load | WASM payload + init |
-  | Phase 3 | "ship the same JS" | build uniffi/JSI bridge |
-
-  Lean **ts-mls** for fastest web→native path unless the audit bar mandates OpenMLS. Record the
-  decision + rationale in STATUS.md.
-- [ ] Implement it in `@agora-sdk/secure-chat-crypto` behind the existing interface, as an **opt-in
-      subpath** (`@agora-sdk/secure-chat-crypto/ts-mls`) so the heavy core isn't pulled in by default.
-      The mock stays on `./testing`.
+- [x] **Decided: ts-mls** (1.6.2; pure TS, `@hpke/core` + `@noble/*`, no WASM) over OpenMLS/mls-rs→WASM,
+      for the fastest web→native path (same JS on web/RN/Expo, no native bridge). Decision + rationale
+      recorded in STATUS.md (2026-06-08).
+- [x] Implemented in `@agora-sdk/secure-chat-crypto` behind the existing interface as an **opt-in
+      ESM-only subpath** `@agora-sdk/secure-chat-crypto/ts-mls` (`createTsMlsSecureChatCrypto`); the
+      mock stays on `./testing` and the bare entry stays dependency-free. Recipient joins from the
+      Welcome alone (`ratchetTreeExtension`); state persists via `encode/decodeGroupState`. Proven by
+      the dual mock+ts-mls e2e.
 - [ ] **Enforce replay/gap detection** via MLS generation counters — the DS only sanity-bounds epochs
-      (spec §11, open decision #3). Verify the chosen core surfaces this; surface gaps to the caller.
+      (spec §11, open decision #3). The ts-mls core surfaces this via `processMessage` results;
+      enforcement (rejecting stale/gapped generations to the caller) is still **deferred**.
 
 ### 2. Key & group-state persistence
 - [ ] Define a small **persistence interface** (get/set opaque blobs by key) so web uses IndexedDB and
