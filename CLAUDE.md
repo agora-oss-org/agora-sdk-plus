@@ -117,10 +117,42 @@ plan.
 
 ## Engineering standards (enforced)
 
-These are **requirements**, not suggestions. Every code change MUST satisfy all four before it is
+These are **requirements**, not suggestions. Every code change MUST satisfy all five before it is
 considered done. They apply to all original code under `packages/**`.
 
-### 1. TSDoc on every public export
+### 1. Security first — this is end-to-end-encryption code
+
+This SDK is the **client side of an E2EE messaging system** whose entire promise is that a blind
+server (and any network attacker) never sees plaintext or key material. Treat every change as
+security-sensitive and hold it to that bar **before** anything else on this list.
+
+- **Plaintext and keys never leave the client in the clear.** Only ciphertext, public keys,
+  KeyPackages, Welcomes/Commits, and passphrase-encrypted backups cross the wire. Never log, throw,
+  serialize into errors, or send to the server: message plaintext, MLS group secrets, signature/HPKE
+  **private** keys, `privateState`, or backup passphrases. Audit `console.*`, error messages, and
+  analytics for accidental leakage.
+- **Respect the crypto seam.** All MLS crypto stays behind `SecureChatCrypto`. Do not hand-roll
+  crypto, invent your own framing, or reach around the interface. Use vetted primitives (the chosen
+  MLS core, `@noble/*`, WebCrypto) — never `Math.random()` for anything security-relevant; use a CSPRNG.
+- **Preserve the security invariants of the protocol.** Epoch/generation ordering, replay/gap
+  rejection, "buffer ahead-of-epoch then verify", and authenticating a sender before trusting a
+  message are correctness *and* security properties. Don't weaken them for convenience; if a change
+  touches one, call it out explicitly and test it.
+- **Fail closed.** On a missing key, failed decrypt/verify, unknown group, or epoch mismatch, surface
+  the error and drop the message — never fall back to plaintext, a zero/empty key, or "skip the check".
+- **Trust boundaries.** The server is **blind and untrusted**: validate/than-decode everything it
+  relays; never assume a server-supplied id, epoch, or blob is well-formed or honest. Treat realtime
+  events as hints, with the REST cursors as the authenticated source of truth.
+- **Backups & at-rest.** Backups use a real KDF (argon2id, conservative params) + AEAD — never the
+  mock's fake KDF in shipped code. Document any plaintext-at-rest (e.g. IndexedDB on web) honestly and
+  scope it.
+- **Dependencies & secrets.** Crypto/security deps are pinned and minimal; review before adding one.
+  No secrets, tokens, or real key material committed to the repo or baked into tests/fixtures.
+- **When in doubt, stop and flag it.** A security-relevant ambiguity is a blocker, not a judgment call
+  to make silently. Surface it; for a non-trivial security-affecting change, prefer a `/security-review`
+  pass before calling it done.
+
+### 2. TSDoc on every public export
 
 Every **exported** symbol (function, class, hook, interface, type, const, enum) carries a `/** … */`
 TSDoc block. TypeDoc only reads block comments directly above a declaration — file-header `//`
@@ -136,7 +168,7 @@ comments are invisible to generated docs and do **not** count.
   original code authored here.
 - `pnpm run typecheck` MUST stay green after doc changes.
 
-### 2. Good comments — explain *why*, not *what*
+### 3. Good comments — explain *why*, not *what*
 
 - Lead each source file with a short header comment stating its purpose and where it sits in the
   blind-server / client-crypto model (match the existing files' style).
@@ -146,13 +178,13 @@ comments are invisible to generated docs and do **not** count.
 - Do not narrate what the code already says. Keep comments **truthful and current** — update them in
   the same edit that changes the behavior they describe; a stale comment is a bug.
 
-### 3. Changelog discipline
+### 4. Changelog discipline
 
 Keep [`CHANGELOG.md`](CHANGELOG.md) ([Keep a Changelog](https://keepachangelog.com/)) current: after
 any code/config/build change, add a bullet under `## [Unreleased]` in the right group
 (`Added` / `Changed` / `Fixed` / `Removed`) in the **same commit**.
 
-### 4. Unit tests for every feature and fix
+### 5. Unit tests for every feature and fix
 
 - Every new feature or bug fix ships with unit tests in the same change. A bug fix starts with a test
   that **fails before** the fix and **passes after** it.

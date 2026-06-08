@@ -19,6 +19,14 @@ All notable changes to Agora SDK Plus are documented here, following
   which also confirms the transport path loads under plain Node ESM. Adds devDeps `pg` + `jose`
   (direct DB seeding + token signing, mirroring agora-server's integration helpers).
 
+### Changed
+
+- **Engineering standards now lead with security.** `CLAUDE.md` adds a new enforced standard #1,
+  "Security first — this is end-to-end-encryption code" (no plaintext/keys on the wire or in logs,
+  respect the crypto seam + CSPRNG, preserve epoch/replay invariants, fail closed, treat the server as
+  blind/untrusted, real KDF for backups, pinned crypto deps, flag ambiguities), and renumbers the
+  existing TSDoc / comments / changelog / tests standards to #2–#5.
+
 ### Fixed
 
 - **`/secure` socket join payloads were a bare string, not an object.** `SecureChatSocketClient`
