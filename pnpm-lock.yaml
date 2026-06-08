@@ -113,6 +113,9 @@ importers:
       '@agora-sdk/secure-chat-core':
         specifier: workspace:*
         version: link:../core
+      '@agora-sdk/secure-chat-crypto':
+        specifier: workspace:*
+        version: link:../crypto
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 18.3.1

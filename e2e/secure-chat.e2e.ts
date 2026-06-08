@@ -25,9 +25,10 @@ import {
   utf8ToBytes,
   bytesToUtf8,
 } from "../packages/secure-chat/core/src/util/base64.js";
-import { MockSecureChatCrypto } from "../packages/secure-chat/crypto/src/testing.js";
+import type { SecureChatCrypto } from "../packages/secure-chat/core/src/index.js";
 import type { SecureMessageModel } from "../packages/secure-chat/core/src/contract/index.js";
 import { readE2EEnv, seedScenario, type Seeded } from "./bootstrap.js";
+import { CRYPTO_VARIANTS } from "./crypto-factory.js";
 
 const env = readE2EEnv();
 
@@ -49,19 +50,22 @@ function onceEvent<T>(
 
 // `describe.skipIf` keeps the suite inert without the env, so the default test run never touches a
 // server. When the env IS present, `env` is non-null for the whole block (asserted via `env!`).
-describe.skipIf(!env)("secure-chat foundation (real transport vs running agora-server)", () => {
+// The whole round-trip runs once per crypto variant: the deterministic mock, then the real ts-mls
+// core (genuine MLS blobs through the blind server — the actual proof the foundation supports it).
+for (const variant of CRYPTO_VARIANTS) {
+describe.skipIf(!env)(`secure-chat foundation [${variant.name}] (real transport vs running agora-server)`, () => {
   let seeded: Seeded;
   let aliceRest: SecureChatRestClient;
   let bobRest: SecureChatRestClient;
   const sockets: SecureChatSocketClient[] = [];
 
   // One device (one MLS identity + crypto instance) per simulated participant.
-  const aliceCrypto = new MockSecureChatCrypto();
-  const bobCrypto = new MockSecureChatCrypto();
+  const aliceCrypto = variant.make();
+  const bobCrypto = variant.make();
   let aliceRowId: string; // alice's server device-row id (sender id on messages)
   let bobRowId: string; // bob's server device-row id (Welcome target)
   let conversationId: string;
-  let aliceGroup: Awaited<ReturnType<MockSecureChatCrypto["createGroup"]>>["group"];
+  let aliceGroup: Awaited<ReturnType<SecureChatCrypto["createGroup"]>>["group"];
 
   const PLAINTEXT_1 = "hello bob — first message";
   const PLAINTEXT_2 = "hello bob — live over the socket";
@@ -246,6 +250,7 @@ describe.skipIf(!env)("secure-chat foundation (real transport vs running agora-s
     return { mlsGroupId: aliceGroup.mlsGroupId, epoch: aliceGroup.epoch };
   }
 });
+}
 
 /** True if `needle` appears as a contiguous byte run inside `haystack` (server-blindness check). */
 function containsSubsequence(haystack: Uint8Array, needle: Uint8Array): boolean {

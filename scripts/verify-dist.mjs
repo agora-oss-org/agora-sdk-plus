@@ -65,14 +65,19 @@ for (const dir of readdirSync(pkgsDir)) {
     }
   }
 
-  // 2. CJS tree must be marked commonjs (the package root is type:module).
-  const cjsMarker = join(base, "dist", "cjs", "package.json");
-  if (!existsSync(cjsMarker)) {
-    problems.push(`${pkg.name}: missing dist/cjs/package.json (CJS type marker)`);
-  } else {
-    const type = JSON.parse(readFileSync(cjsMarker, "utf8")).type;
-    if (type !== "commonjs") {
-      problems.push(`${pkg.name}: dist/cjs/package.json type is "${type}", expected "commonjs"`);
+  // 2. CJS tree must be marked commonjs (the package root is type:module) — but only for packages
+  //    that actually ship a CJS build. ESM-only packages (e.g. react-js, which depends on the ESM-only
+  //    ts-mls core + bundler-only @agora-sdk/core) declare an ESM `main` and have no dist/cjs.
+  const esmOnly = typeof pkg.main === "string" && !pkg.main.includes("/cjs/");
+  if (!esmOnly) {
+    const cjsMarker = join(base, "dist", "cjs", "package.json");
+    if (!existsSync(cjsMarker)) {
+      problems.push(`${pkg.name}: missing dist/cjs/package.json (CJS type marker)`);
+    } else {
+      const type = JSON.parse(readFileSync(cjsMarker, "utf8")).type;
+      if (type !== "commonjs") {
+        problems.push(`${pkg.name}: dist/cjs/package.json type is "${type}", expected "commonjs"`);
+      }
     }
   }
 }

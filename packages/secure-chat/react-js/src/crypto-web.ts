@@ -1,41 +1,20 @@
-// Web `SecureChatCrypto` — Phase 2 placeholder.
+// Web `SecureChatCrypto` — the real ts-mls MLS core (Phase 2).
 //
-// This is where the real MLS implementation lands: **ts-mls** (pure TS) or **OpenMLS→WASM**,
-// behind the `SecureChatCrypto` interface, plus IndexedDB persistence of group state. Until then,
-// `createWebSecureChatCrypto()` returns a stub whose methods throw a clear "not implemented" error,
-// so apps can wire `<SecureChatProvider crypto={...}>` against the real shape now.
-//
-// For tests / early UI work, inject the deterministic `MockSecureChatCrypto` instead (it will ship
-// from the published @agora-sdk/secure-chat-crypto package — see the repo STATUS.md).
-
+// Wires the concrete RFC 9420 implementation from @agora-sdk/secure-chat-crypto/ts-mls. All MLS crypto
+// runs client-side behind the seam; the server only ever relays opaque base64 blobs. For tests / early
+// UI work, inject `MockSecureChatCrypto` from `@agora-sdk/secure-chat-crypto/testing` instead.
 import type { SecureChatCrypto } from "@agora-sdk/secure-chat-core";
-
-const PHASE_2 = "Web SecureChatCrypto (ts-mls/OpenMLS-WASM) is not implemented yet — Phase 2.";
+import { createTsMlsSecureChatCrypto } from "@agora-sdk/secure-chat-crypto/ts-mls";
 
 /**
- * Returns a placeholder web `SecureChatCrypto`. Every method throws until the real MLS core is
- * wired. Swap this for the concrete implementation (or a mock) when integrating.
+ * Create the web `SecureChatCrypto` (real ts-mls MLS core) for `<SecureChatProvider crypto={…}>`.
+ *
+ * @returns A ready ts-mls-backed `SecureChatCrypto`.
+ * @example
+ * ```tsx
+ * <SecureChatProvider crypto={createWebSecureChatCrypto()} …>
+ * ```
  */
 export function createWebSecureChatCrypto(): SecureChatCrypto {
-  const notImplemented = (): never => {
-    throw new Error(PHASE_2);
-  };
-  return {
-    generateDeviceIdentity: notImplemented,
-    generateKeyPackages: notImplemented,
-    createGroup: notImplemented,
-    addMember: notImplemented,
-    removeMember: notImplemented,
-    encryptMessage: notImplemented,
-    decryptMessage: notImplemented,
-    processWelcome: notImplemented,
-    processCommit: notImplemented,
-    processProposal: notImplemented,
-    exportGroupState: notImplemented,
-    importGroupState: notImplemented,
-    exportDeviceState: notImplemented,
-    importDeviceState: notImplemented,
-    exportBackup: notImplemented,
-    importBackup: notImplemented,
-  };
+  return createTsMlsSecureChatCrypto();
 }
