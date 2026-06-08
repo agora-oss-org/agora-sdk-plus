@@ -24,7 +24,7 @@ package) and would have published AGPL crypto. The corrected model, agreed with 
 
 | Artifact | Home | Relationship |
 |---|---|---|
-| `SecureChatCrypto` interface + mock (+ future ts-mls/OpenMLS) | **this repo** (`@agora-sdk/secure-chat-crypto`, Apache-2.0) | agora-server **dev-depends** on it for tests — a consumer, like agora-demo consumes the published SDK |
+| `SecureChatCrypto` interface + mock + the real ts-mls core (`./ts-mls`) | **this repo** (`@agora-sdk/secure-chat-crypto`, Apache-2.0) | agora-server **dev-depends** on it for tests — a consumer, like agora-demo consumes the published SDK |
 | secure-chat wire types (`Secure*Model`, request bodies) | **agora-server** (`@agora-server/contract`, Apache-2.0) | this SDK **depends on** it; we keep a stand-in copy until it's published |
 
 Why this is right: it removes the dependency inversion, and it dissolves the license problem — the

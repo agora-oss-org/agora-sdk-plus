@@ -50,8 +50,8 @@ The two arrows worth memorizing: **SDK → contract** (never the reverse), and *
 ## Layers & seams (inside the SDK)
 
 Two things are **dependency-injected** so core stays platform- and library-agnostic: the **crypto**
-(mock in tests; ts-mls/native later) and the **store** (in-memory by default; IndexedDB on web —
-Phase 2).
+(mock in tests; the real **ts-mls** core on web via `@agora-sdk/secure-chat-crypto/ts-mls`; native
+later) and the **store** (in-memory by default; IndexedDB on web).
 
 ```mermaid
 flowchart LR

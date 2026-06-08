@@ -4,7 +4,7 @@
   "private": false,
   "license": "Apache-2.0",
   "author": "Agora SDK Plus, maintained by Jenova Marie",
-  "description": "The SecureChatCrypto seam for Agora end-to-end-encrypted chat (MLS / RFC 9420): the client crypto interface + a deterministic mock. Dependency-free; the real ts-mls/OpenMLS cores plug in behind the interface.",
+  "description": "The SecureChatCrypto seam for Agora end-to-end-encrypted chat (MLS / RFC 9420): the client crypto interface + a deterministic mock (./testing) + the real ts-mls core (./ts-mls, ESM-only). The bare entry and ./testing are dependency-free.",
   "keywords": [
     "agora",
     "secure-chat",

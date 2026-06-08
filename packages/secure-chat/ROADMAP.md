@@ -111,8 +111,8 @@ passphrase backup, with the server storing **only ciphertext**.
 
 ## Open decisions (SDK-relevant; from spec §16)
 
-1. ts-mls vs OpenMLS-WASM — **must pick** (task 1).
-2. Chosen core must enforce generation-counter replay/gap detection (task 1).
+1. ts-mls vs OpenMLS-WASM — ✅ **decided: ts-mls** (task 1; see STATUS.md 2026-06-08).
+2. Chosen core must enforce generation-counter replay/gap detection — ts-mls surfaces it; enforcement still **open** (task 1).
 3. Ciphertext padding strategy (task 6).
 4. Backup-passphrase strength enforcement (task 5).
 5. Channel committer (External Commits) — needs server coordination before channels.

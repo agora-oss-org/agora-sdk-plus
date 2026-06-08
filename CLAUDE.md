@@ -45,9 +45,9 @@ The repo ships feature-grouped packages, each mirroring agora-sdk's **core + pla
 SDKs feel identical to consumers:
 
 ```
-packages/secure-chat/crypto       @agora-sdk/secure-chat-crypto       the SecureChatCrypto seam: interface (main) + MockSecureChatCrypto (./testing). Dependency-free.
+packages/secure-chat/crypto       @agora-sdk/secure-chat-crypto       the SecureChatCrypto seam: interface (main) + MockSecureChatCrypto (./testing) + real ts-mls core (./ts-mls, ESM-only). Bare entry + ./testing are dependency-free.
 packages/secure-chat/core         @agora-sdk/secure-chat-core         transport + provider/hooks + DI crypto (platform-agnostic)
-packages/secure-chat/react-js     @agora-sdk/secure-chat-react-js     web: ts-mls crypto + IndexedDB persistence   (Phase 2)
+packages/secure-chat/react-js     @agora-sdk/secure-chat-react-js     web: real ts-mls crypto + IndexedDB persistence (ESM-only)
 packages/secure-chat/react-native @agora-sdk/secure-chat-react-native bare RN: Keychain + native MLS               (Phase 3 stub)
 packages/secure-chat/expo         @agora-sdk/secure-chat-expo         Expo: SecureStore                            (Phase 3 stub)
 ```
@@ -69,8 +69,8 @@ seam.** This SDK's job:
    socket.io namespace for realtime fan-out (`secure:message`, `secure:welcome`, `secure:handshake`,
    `secure:key-packages-low`, …).
 2. **Crypto (DI)** — accept a `SecureChatCrypto` implementation. Core ships against the interface +
-   mock; `react-js` will wire the real **ts-mls** (or OpenMLS-WASM) implementation + IndexedDB
-   group-state persistence (Phase 2).
+   mock; `react-js` wires the real **ts-mls** core (`@agora-sdk/secure-chat-crypto/ts-mls`) +
+   IndexedDB group-state persistence.
 3. **Provider + hooks** — `SecureChatProvider` + `useSecureChat`, then feature hooks
    (`useSecureDevice`, `useSecureConversations`, `useSecureMessages`) following the same
    provider+hooks pattern as `@agora-sdk/core`.
@@ -83,8 +83,9 @@ endpoints; realtime is a notification optimization (offline catch-up via the cur
 The dependency arrow is **SDK → contract**, and the **crypto seam is client code that lives here**:
 
 - **Crypto** — `@agora-sdk/secure-chat-crypto` is the home of record for the `SecureChatCrypto`
-  interface + the `MockSecureChatCrypto` (and, in Phase 2, the real ts-mls/OpenMLS cores). It is
-  Apache-2.0 and dependency-free. agora-server **consumes** it as a test devDependency (it only used
+  interface, the `MockSecureChatCrypto` (`./testing`), and the real **ts-mls** core (`./ts-mls`, an
+  opt-in **ESM-only** subpath). The bare entry + `./testing` stay Apache-2.0 and dependency-free; only
+  `./ts-mls` pulls in ts-mls. agora-server **consumes** it as a test devDependency (it only used
   the mock to simulate a client), so it must not live in the AGPL server repo.
 - **Wire types** — owned by agora-server's `@agora-server/contract` (Apache-2.0). This SDK **depends on**
   it. Until `@agora-server/contract` is published, `packages/secure-chat/core/src/contract/` holds a
@@ -102,7 +103,8 @@ plan.
 - `pnpm install` — install
 - `pnpm run build-all` — build all packages in dependency order (core → react-js → react-native →
   expo); each compiles dual ESM (`dist/esm`, `tsconfig.esm.json`) + CJS (`dist/cjs`,
-  `tsconfig.cjs.json`)
+  `tsconfig.cjs.json`) — **except `react-js`, which is ESM-only** (it depends on the ESM-only ts-mls
+  core + bundler-only `@agora-sdk/core`, so a CJS build would never load at runtime)
 - `pnpm --filter @agora-sdk/secure-chat-core run build` — build one package while iterating
 - `pnpm run typecheck` — `tsc --noEmit` at the root
 - `pnpm test` — unit suite (vitest); fully mocked, server-free
@@ -209,8 +211,10 @@ The SDK team's detailed Phase 2/3 checklist (with a per-file map of the scaffold
 
 - **Phase 1 — DONE (server).** Blind Delivery Service + schema + `/secure` realtime + contract +
   `SecureChatCrypto` seam + mock-tested.
-- **Phase 2 — web client (this repo's focus).** Real `SecureChatCrypto` (ts-mls/OpenMLS-WASM) behind
-  the interface; IndexedDB group-state persistence; KeyPackage replenishment loop; handshake-pull on
-  connect + realtime catch-up; passphrase backup/restore (argon2id). Expected **no server changes**.
+- **Phase 2 — web client (this repo's focus).** Real `SecureChatCrypto` (**ts-mls**) behind the
+  interface — **shipped** (`./ts-mls`); IndexedDB group-state persistence — **done**; handshake-pull on
+  connect + realtime catch-up — **done**. Remaining: KeyPackage replenishment tuning, passphrase
+  backup/restore (argon2id; the core's backup methods currently throw), generation-counter
+  enforcement, metadata padding. Expected **no server changes**.
 - **Phase 3 — native + full multi-device.** RN + Expo (native MLS bindings, hardware keystore);
   multiple devices/leaves per user; device-linking; cross-device history sync.

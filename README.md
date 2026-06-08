@@ -9,17 +9,18 @@ First feature: **secure chat** — the client side of Agora's end-to-end-encrypt
 delivery service that never sees plaintext; all crypto lives in these client packages behind a
 swappable `SecureChatCrypto` seam.
 
-> **Status: early scaffold (Phase 2 in progress).** The package structure, transport, and
-> provider/hooks API are being built. The real MLS crypto implementation (ts-mls / OpenMLS-WASM) is
-> not wired yet. Not published to npm.
+> **Status: Phase 2 in progress.** Structure, transport, provider/hooks, persistence, and handshake
+> processing are built, and the real MLS crypto (**ts-mls**) is wired on web (`@agora-sdk/secure-chat-crypto/ts-mls`)
+> and proven end-to-end against a running agora-server. Remaining Phase 2: KeyPackage replenishment
+> tuning, passphrase backup/restore, generation-counter enforcement. Not yet published to npm.
 
 ## Packages
 
 | Package | Role |
 |---|---|
-| `@agora-sdk/secure-chat-crypto` | The `SecureChatCrypto` seam: interface (main entry) + `MockSecureChatCrypto` (`./testing`). Dependency-free; the real ts-mls/OpenMLS cores plug in here |
+| `@agora-sdk/secure-chat-crypto` | The `SecureChatCrypto` seam: interface (main entry) + `MockSecureChatCrypto` (`./testing`) + the real **ts-mls** core (`./ts-mls`, ESM-only). Bare entry + `./testing` are dependency-free |
 | `@agora-sdk/secure-chat-core` | Platform-agnostic: REST + `/secure` socket transport, `SecureChatProvider` + hooks, crypto via dependency injection |
-| `@agora-sdk/secure-chat-react-js` | Web: real `SecureChatCrypto` (ts-mls) + IndexedDB persistence *(Phase 2)* |
+| `@agora-sdk/secure-chat-react-js` | Web: real `SecureChatCrypto` (ts-mls) + IndexedDB persistence *(ESM-only)* |
 | `@agora-sdk/secure-chat-react-native` | Bare React Native: Keychain + native MLS *(Phase 3 — stub)* |
 | `@agora-sdk/secure-chat-expo` | Expo: SecureStore *(Phase 3 — stub)* |
 
@@ -45,7 +46,7 @@ import { SecureChatProvider } from "@agora-sdk/secure-chat-react-js";
 
 ```bash
 pnpm install
-pnpm run build-all     # core → react-js → react-native → expo (dual ESM + CJS)
+pnpm run build-all     # core → react-js → react-native → expo (dual ESM + CJS; react-js is ESM-only)
 pnpm run typecheck
 pnpm test              # unit suite (vitest) — fully mocked, no server needed
 ```
