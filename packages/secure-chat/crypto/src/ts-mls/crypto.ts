@@ -10,18 +10,19 @@
 import {
   generateKeyPackageWithKey, defaultCapabilities, defaultLifetime,
   createGroup, createCommit, joinGroup, createApplicationMessage, processMessage,
-  encodeMlsMessage, decodeMlsMessage, zeroOutUint8Array, acceptAll, emptyPskIndex,
+  encodeMlsMessage, decodeMlsMessage, encodeGroupState, decodeGroupState, zeroOutUint8Array, acceptAll, emptyPskIndex,
   type Credential, type CiphersuiteImpl, type KeyPackage, type PrivateKeyPackage, type ClientState,
 } from "ts-mls";
-// makeKeyPackageRef + getGroupMembers aren't re-exported from the package root; ts-mls exposes every
-// module via its "./*.js" export, so deep-import them.
+// makeKeyPackageRef + getGroupMembers + defaultClientConfig aren't re-exported from the package root;
+// ts-mls exposes every module via its "./*.js" export, so deep-import them.
 import { makeKeyPackageRef } from "ts-mls/keyPackage.js";
 import { getGroupMembers } from "ts-mls/clientState.js";
+import { defaultClientConfig } from "ts-mls/clientConfig.js";
 import type {
   SecureChatCrypto, DeviceIdentity, KeyPackageBundle, GroupHandle, CommitResult, TargetedWelcome, PassphraseBackup,
 } from "../interface.js";
 import { DEFAULT_CIPHERSUITE_ID, loadCiphersuite } from "./ciphersuite.js";
-import { toHex } from "./hex.js";
+import { toHex, fromHex } from "./hex.js";
 
 const utf8 = (s: string) => new TextEncoder().encode(s);
 const MLS_VERSION = "mls10" as const;
@@ -233,14 +234,54 @@ export class TsMlsSecureChatCrypto implements SecureChatCrypto {
     if (res.kind === "newState") this.groups.set(toHex(group.mlsGroupId), res.newState);
   }
 
-  exportGroupState(): never { throw new Error("not implemented yet (Task 5)"); }
-  importGroupState(): never { throw new Error("not implemented yet (Task 5)"); }
-  importDeviceState(): never { throw new Error("not implemented yet (Task 5)"); }
-  exportDeviceState(): Promise<Uint8Array> { return Promise.resolve(this.serializeDeviceState()); }
-  exportBackup(_passphrase: string): Promise<PassphraseBackup> {
+  async exportGroupState(group: GroupHandle): Promise<Uint8Array> {
+    // ClientState = GroupState & { clientConfig }. encodeGroupState serializes the GroupState; the
+    // clientConfig (which holds non-serializable callbacks) is reattached from the default on import.
+    return encodeGroupState(this.lookupGroup(group));
+  }
+
+  async importGroupState(state: Uint8Array): Promise<GroupHandle> {
+    const decoded = decodeGroupState(state, 0);
+    if (!decoded) throw new Error("secure-chat: corrupt group state");
+    const clientState: ClientState = { ...decoded[0], clientConfig: defaultClientConfig };
+    this.groups.set(toHex(clientState.groupContext.groupId), clientState);
+    return { mlsGroupId: clientState.groupContext.groupId, epoch: clientState.groupContext.epoch };
+  }
+
+  async exportDeviceState(): Promise<Uint8Array> {
+    return this.serializeDeviceState();
+  }
+
+  async importDeviceState(state: Uint8Array): Promise<DeviceIdentity> {
+    const p = JSON.parse(new TextDecoder().decode(state)) as {
+      v: number; deviceId: string; ciphersuite: number; signKey: string; publicKey: string;
+      pending: { ref: string; publicPackage: string; initPrivateKey: string; hpkePrivateKey: string; signaturePrivateKey: string }[];
+    };
+    if (p.v !== 1) throw new Error(`secure-chat: unsupported device-state version ${p.v}`);
+    this.device = {
+      deviceId: p.deviceId, ciphersuite: p.ciphersuite, signKey: fromHex(p.signKey), publicKey: fromHex(p.publicKey),
+    };
+    this.credential = { credentialType: "basic", identity: utf8(p.deviceId) };
+    this.pending.clear();
+    for (const e of p.pending) {
+      this.pending.set(e.ref, {
+        publicPackage: this.decodeKeyPackage(fromHex(e.publicPackage)),
+        privatePackage: {
+          initPrivateKey: fromHex(e.initPrivateKey),
+          hpkePrivateKey: fromHex(e.hpkePrivateKey),
+          signaturePrivateKey: fromHex(e.signaturePrivateKey),
+        },
+      });
+    }
+    return { deviceId: p.deviceId, signaturePublicKey: this.device.publicKey, credential: utf8(p.deviceId), ciphersuite: p.ciphersuite };
+  }
+
+  // Backup/restore UX (real argon2id KDF + AEAD) is Phase 2 task 5. async so callers get a rejected
+  // promise, not a synchronous throw.
+  async exportBackup(_passphrase: string): Promise<PassphraseBackup> {
     throw new Error("secure-chat: passphrase backup is not implemented in this core yet (Phase 2 task 5)");
   }
-  importBackup(): never {
+  async importBackup(_passphrase: string, _backup: PassphraseBackup): Promise<void> {
     throw new Error("secure-chat: passphrase restore is not implemented in this core yet (Phase 2 task 5)");
   }
 

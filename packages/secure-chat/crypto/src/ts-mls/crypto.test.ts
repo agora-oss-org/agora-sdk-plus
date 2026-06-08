@@ -68,3 +68,32 @@ describe("TsMlsSecureChatCrypto: DM round-trip", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("TsMlsSecureChatCrypto: persistence round-trips", () => {
+  it("a fresh instance restores device + group state and keeps decrypting", async () => {
+    const { alice, bob, aliceGroup, bobGroup } = await twoPartyDM();
+
+    // alice sends one message before the "reload".
+    const m1 = await alice.encryptMessage(aliceGroup, new TextEncoder().encode("before reload"));
+    expect(fromUtf8((await bob.decryptMessage(bobGroup, m1.ciphertext)).plaintext)).toBe("before reload");
+
+    // Snapshot bob, then rebuild him on a brand-new instance from the blobs alone.
+    const deviceBlob = await bob.exportDeviceState();
+    const groupBlob = await bob.exportGroupState(bobGroup);
+
+    const bob2 = new TsMlsSecureChatCrypto();
+    await bob2.importDeviceState(deviceBlob);
+    const bobGroup2 = await bob2.importGroupState(groupBlob);
+    expect(Buffer.from(bobGroup2.mlsGroupId).equals(Buffer.from(bobGroup.mlsGroupId))).toBe(true);
+
+    // alice sends again; the restored bob decrypts it.
+    const m2 = await alice.encryptMessage(aliceGroup, new TextEncoder().encode("after reload"));
+    expect(fromUtf8((await bob2.decryptMessage(bobGroup2, m2.ciphertext)).plaintext)).toBe("after reload");
+  });
+
+  it("exportBackup/importBackup are explicitly deferred (task 5 UX)", async () => {
+    const c = new TsMlsSecureChatCrypto();
+    await c.generateDeviceIdentity({ deviceId: "x" });
+    await expect(c.exportBackup("pw")).rejects.toThrow(/not implemented/);
+  });
+});
