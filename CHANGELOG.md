@@ -6,6 +6,15 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Not yet implemented
+
+- KeyPackage replenishment loop tuning; passphrase backup/restore UX (real argon2id KDF — the ts-mls
+  core's `export/importBackup` currently throw); backup-restore eviction recovery; metadata padding;
+  generation-counter replay/gap enforcement; 409 epoch-conflict rebase on membership commits (the
+  `resync()` seam is in place); `removeMember`/membership churn + multi-device + native (Phase 3).
+
+## [0.4.0] — 2026-06-08
+
 ### Added
 
 - **Real MLS core (Phase 2 task 1).** `@agora-sdk/secure-chat-crypto/ts-mls` —
@@ -59,13 +68,6 @@ All notable changes to Agora SDK Plus are documented here, following
   no-op'd (no realtime delivery) and a `null` payload could even crash the server process. Now emits
   the object shape; `SecureClientEvents` is corrected to match `SecureClientToServerEvents`. Caught by
   the new e2e (the realtime fan-out step) and locked by a `socket.test.ts` regression.
-
-### Not yet implemented
-
-- KeyPackage replenishment loop tuning; passphrase backup/restore UX (real argon2id KDF — the ts-mls
-  core's `export/importBackup` currently throw); backup-restore eviction recovery; metadata padding;
-  generation-counter replay/gap enforcement; 409 epoch-conflict rebase on membership commits (the
-  `resync()` seam is in place); `removeMember`/membership churn + multi-device + native (Phase 3).
 
 ## [0.3.0] — 2026-06-07
 
