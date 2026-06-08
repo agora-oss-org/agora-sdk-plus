@@ -5,7 +5,7 @@
 // options for advanced use. Without a resolvable handle, ciphertext is still listed/received
 // (plaintext: null) and sending is disabled.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SecureMessageModel } from "../contract/index.js";
 import { GroupHandle } from "@agora-sdk/secure-chat-crypto";
 import { toBase64, fromBase64, utf8ToBytes, bytesToUtf8 } from "../util/base64.js";
@@ -75,6 +75,11 @@ export function useSecureMessages(
   const [error, setError] = useState<unknown>(null);
   const [group, setGroup] = useState<GroupHandle | null>(options.group ?? null);
   const [senderDeviceId, setSenderDeviceId] = useState<string | undefined>(options.senderDeviceId);
+
+  // Latest messages, read by the "decrypt history once the group resolves" effect below without
+  // making `messages` one of its deps (which would loop).
+  const messagesRef = useRef<DecryptedSecureMessage[]>(messages);
+  messagesRef.current = messages;
 
   // Resolve the group handle: explicit override, else persisted state.
   useEffect(() => {
@@ -168,6 +173,9 @@ export function useSecureMessages(
 
   const sendMessage = useCallback(
     async (text: string): Promise<void> => {
+      // Assumes the crypto identity is already hydrated (mount `useSecureDevice` under the same
+      // provider): the crypto layer tags the sender from the restored device identity, so after a
+      // reload the first send must wait for useSecureDevice's importDeviceState to complete.
       if (!group) throw new Error("Cannot send: no MLS group handle for this conversation.");
       if (!senderDeviceId) throw new Error("Cannot send: senderDeviceId is required.");
       const { ciphertext, epoch } = await crypto.encryptMessage(group, utf8ToBytes(text));
@@ -186,6 +194,24 @@ export function useSecureMessages(
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
+
+  // Decrypt history that was listed before the group handle resolved. On reload, the first page loads
+  // while resolveGroup is still in flight, so those rows come back `plaintext: null`; once the handle
+  // arrives (decrypt is recreated with it), re-decrypt the still-undecrypted rows in place — no
+  // re-fetch, scroll/pagination preserved.
+  useEffect(() => {
+    if (!group) return;
+    if (!messagesRef.current.some((m) => m.plaintext === null)) return;
+    let alive = true;
+    Promise.all(
+      messagesRef.current.map((m) => (m.plaintext === null ? decrypt(m.model) : Promise.resolve(m)))
+    ).then((next) => {
+      if (alive) setMessages(next);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [group, decrypt]);
 
   // Live receive: join the conversation room and decrypt inbound ciphertext.
   useEffect(() => {

@@ -65,6 +65,11 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Fixed
 
+- `useSecureMessages` now decrypts conversation **history** after a reload, not just new sends. The
+  first page loads while `resolveGroup` is still in flight, so those rows arrived `plaintext: null`
+  and never re-decrypted; the hook now re-decrypts the undecrypted rows in place once the group handle
+  resolves (no re-fetch, scroll/pagination preserved). Surfaced by a new end-to-end reload test that
+  drives a *fresh* crypto instance through `importDeviceState` + `importGroupState`.
 - Root `pnpm run typecheck` no longer requires a prior `build-all`: it resolves the in-repo
   workspace packages to their source via `tsconfig` `paths`, so a fresh checkout (and CI) typechecks
   without first emitting each package's `dist/*.d.ts`.
