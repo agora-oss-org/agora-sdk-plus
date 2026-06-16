@@ -7,16 +7,34 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SecureMessageModel } from "../contract/index.js";
-import { GroupHandle } from "@agora-sdk/secure-chat-crypto";
+import {
+  GroupHandle,
+  SecureChatDecryptError,
+  type SecureDecryptFailureReason,
+} from "@agora-sdk/secure-chat-crypto";
 import { toBase64, fromBase64, utf8ToBytes, bytesToUtf8 } from "../util/base64.js";
 import { useSecureChat } from "../context/secure-chat-context.js";
 
-/** A stored message paired with its decrypted text (when a group handle is available). */
+/**
+ * Decryption outcome for a stored message:
+ * - `ok` — decrypted + authenticated; `plaintext` is set.
+ * - `pending` — not decryptable yet (no group handle, or the message's epoch is ahead of ours); it will
+ *   be retried when the group advances. `plaintext` is null.
+ * - `rejected` — fails closed: the MLS core rejected it (replay, over-window gap, bad auth, malformed,
+ *   too-old epoch). NEVER retried; `plaintext` is null and `rejectedReason` says why.
+ */
+export type SecureMessageStatus = "ok" | "pending" | "rejected";
+
+/** A stored message paired with its decryption outcome. */
 export interface DecryptedSecureMessage {
   /** The raw message row from the server (still holds the base64 ciphertext). */
   model: SecureMessageModel;
-  /** Decrypted text, or null when no group handle is available or decryption is pending/failed. */
+  /** Decrypted text, or null when {@link DecryptedSecureMessage.status} is `pending` or `rejected`. */
   plaintext: string | null;
+  /** Decryption outcome — drives fail-closed handling and what the UI renders. */
+  status: SecureMessageStatus;
+  /** When `status` is `rejected`, why the MLS core refused the message. */
+  rejectedReason?: SecureDecryptFailureReason;
 }
 
 /** Options for {@link useSecureMessages}. */
@@ -138,13 +156,23 @@ export function useSecureMessages(
 
   const decrypt = useCallback(
     async (model: SecureMessageModel): Promise<DecryptedSecureMessage> => {
-      if (!group) return { model, plaintext: null };
+      // No handle yet (still resolving) → retryable once it arrives.
+      if (!group) return { model, plaintext: null, status: "pending" };
       try {
         const { plaintext } = await crypto.decryptMessage(group, fromBase64(model.ciphertext));
-        return { model, plaintext: bytesToUtf8(plaintext) };
-      } catch {
-        // Buffer/skip: epoch not yet reached, or undecryptable. Surface ciphertext without text.
-        return { model, plaintext: null };
+        return { model, plaintext: bytesToUtf8(plaintext), status: "ok" };
+      } catch (err) {
+        // Classify, don't conflate. A message from an epoch we HAVEN'T reached yet is legitimately
+        // buffered (a future Commit will advance us, then this re-decrypts). Anything else that fails
+        // at an epoch we HAVE reached is a terminal rejection — the MLS core refused it (replay,
+        // over-window gap, bad auth, malformed, too-old epoch). Fail closed: never show it as text and
+        // never silently retry it forever (the old behavior masked replays/forgeries as "pending").
+        if (BigInt(model.epoch) > group.epoch) {
+          return { model, plaintext: null, status: "pending" };
+        }
+        const rejectedReason: SecureDecryptFailureReason =
+          err instanceof SecureChatDecryptError ? err.reason : "unknown";
+        return { model, plaintext: null, status: "rejected", rejectedReason };
       }
     },
     [crypto, group]
@@ -198,7 +226,7 @@ export function useSecureMessages(
         senderDeviceId,
       });
       // Optimistic: we know our own plaintext without a round-trip through decrypt.
-      setMessages((prev) => [{ model: sent, plaintext: text }, ...prev]);
+      setMessages((prev) => [{ model: sent, plaintext: text, status: "ok" }, ...prev]);
     },
     [crypto, rest, conversationId, group, senderDeviceId]
   );
@@ -208,16 +236,16 @@ export function useSecureMessages(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
-  // Decrypt history that was listed before the group handle resolved. On reload, the first page loads
-  // while resolveGroup is still in flight, so those rows come back `plaintext: null`; once the handle
-  // arrives (decrypt is recreated with it), re-decrypt the still-undecrypted rows in place — no
-  // re-fetch, scroll/pagination preserved.
+  // Re-decrypt buffered rows when the group handle advances. On reload the first page loads while
+  // resolveGroup is still in flight (those rows come back `pending`); a Commit/join also advances the
+  // epoch, letting previously-ahead rows decrypt. Retry ONLY `pending` rows — never `rejected` ones, so
+  // a replay/forgery the core already refused isn't retried on every epoch bump. `ok` rows are kept.
   useEffect(() => {
     if (!group) return;
-    if (!messagesRef.current.some((m) => m.plaintext === null)) return;
+    if (!messagesRef.current.some((m) => m.status === "pending")) return;
     let alive = true;
     Promise.all(
-      messagesRef.current.map((m) => (m.plaintext === null ? decrypt(m.model) : Promise.resolve(m)))
+      messagesRef.current.map((m) => (m.status === "pending" ? decrypt(m.model) : Promise.resolve(m)))
     ).then((next) => {
       if (alive) setMessages(next);
     });

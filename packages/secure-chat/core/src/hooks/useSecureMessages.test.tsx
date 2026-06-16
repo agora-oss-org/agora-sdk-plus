@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { renderHook, waitFor, act } from "@testing-library/react";
 import { MockSecureChatCrypto } from "@agora-sdk/secure-chat-crypto/testing";
-import { SecureChatProvider } from "../context/secure-chat-context.js";
+import { SecureChatDecryptError } from "@agora-sdk/secure-chat-crypto";
+import { SecureChatProvider, useSecureChat } from "../context/secure-chat-context.js";
 import { useSecureMessages } from "./useSecureMessages.js";
 import { useSecureDevice } from "./useSecureDevice.js";
 import { MemoryStore } from "../persistence/memory-store.js";
@@ -137,5 +138,88 @@ describe("useSecureMessages", () => {
     const decoded = await before.decryptMessage(group, fromBase64(sentCiphertext));
     expect(decoded.senderDeviceId).toBe("me");
     expect(new TextDecoder().decode(decoded.plaintext)).toBe("after reload");
+  });
+});
+
+describe("useSecureMessages — generation-counter rejection (fail closed)", () => {
+  const enc = (s: string) => new TextEncoder().encode(s);
+  const msgRow = (id: string, epoch: string): SecureMessageModel => ({
+    id, projectId: "p", conversationId: "conv-1", senderUserId: "u", senderDeviceId: "peer",
+    epoch, ciphertext: toBase64(enc("cipher")), contentType: "text/plain", createdAt: "",
+  });
+
+  // Persist a group (mock epoch 0) + device so the hook resolves a handle; return the live crypto.
+  async function seed() {
+    const crypto = new MockSecureChatCrypto();
+    await crypto.generateDeviceIdentity({ deviceId: "me" });
+    const { group } = await crypto.createGroup({ initialMembers: [] }); // epoch 0n
+    const store = new MemoryStore();
+    const repo = new SecureChatRepository(store);
+    await repo.saveGroupState("conv-1", await crypto.exportGroupState(group));
+    await repo.saveDevice({ deviceId: "me", deviceState: await crypto.exportDeviceState(), device: row });
+    return { crypto, store, group };
+  }
+
+  it("marks a core-rejected message as 'rejected' with its reason, never as plaintext", async () => {
+    const { crypto, store } = await seed();
+    vi.spyOn(crypto, "decryptMessage").mockRejectedValue(new SecureChatDecryptError("replay", "x"));
+    vi.spyOn(SecureChatRestClient.prototype, "listMessages").mockResolvedValue({
+      messages: [msgRow("m1", "0")], hasMore: false, // epoch 0 == our epoch → not "ahead" → terminal
+    });
+
+    const { result } = renderHook(() => useSecureMessages("conv-1"), { wrapper: wrap(crypto, store) });
+    await waitFor(() => expect(result.current.messages[0]?.status).toBe("rejected"));
+    expect(result.current.messages[0]?.rejectedReason).toBe("replay");
+    expect(result.current.messages[0]?.plaintext).toBeNull();
+  });
+
+  it("buffers a future-epoch message as 'pending' and decrypts it once the group advances", async () => {
+    const { crypto, store, group } = await seed();
+    // Spy keys off the group epoch it's called with: succeed only once we've advanced to epoch ≥ 1.
+    vi.spyOn(crypto, "decryptMessage").mockImplementation(async (g: { epoch: bigint }) => {
+      if (g.epoch >= 1n) return { plaintext: enc("hello"), senderDeviceId: "peer", epoch: g.epoch };
+      throw new SecureChatDecryptError("malformed", "not at this epoch yet");
+    });
+    vi.spyOn(SecureChatRestClient.prototype, "listMessages").mockResolvedValue({
+      messages: [msgRow("m1", "1")], hasMore: false, // epoch 1 > our epoch 0 → buffer, don't reject
+    });
+
+    const { result } = renderHook(
+      () => ({ chat: useSecureChat(), msgs: useSecureMessages("conv-1") }),
+      { wrapper: wrap(crypto, store) }
+    );
+    await waitFor(() => expect(result.current.msgs.messages[0]?.status).toBe("pending"));
+
+    // A processed Commit advances the group handle to epoch 1 → the buffered row re-decrypts.
+    await act(async () => {
+      await result.current.chat.rememberGroup("conv-1", { mlsGroupId: group.mlsGroupId, epoch: 1n });
+    });
+    await waitFor(() => expect(result.current.msgs.messages[0]?.status).toBe("ok"));
+    expect(result.current.msgs.messages[0]?.plaintext).toBe("hello");
+  });
+
+  it("never retries a rejected message when the group advances", async () => {
+    const { crypto, store, group } = await seed();
+    const spy = vi
+      .spyOn(crypto, "decryptMessage")
+      .mockRejectedValue(new SecureChatDecryptError("replay", "x"));
+    vi.spyOn(SecureChatRestClient.prototype, "listMessages").mockResolvedValue({
+      messages: [msgRow("m1", "0")], hasMore: false,
+    });
+
+    const { result } = renderHook(
+      () => ({ chat: useSecureChat(), msgs: useSecureMessages("conv-1") }),
+      { wrapper: wrap(crypto, store) }
+    );
+    await waitFor(() => expect(result.current.msgs.messages[0]?.status).toBe("rejected"));
+    const callsWhenRejected = spy.mock.calls.length;
+
+    // Advance the group — the retry effect runs, but a rejected row must be excluded.
+    await act(async () => {
+      await result.current.chat.rememberGroup("conv-1", { mlsGroupId: group.mlsGroupId, epoch: 1n });
+    });
+    await waitFor(() => expect(result.current.chat.getGroupVersion("conv-1")).toBeGreaterThan(0));
+    expect(spy.mock.calls.length).toBe(callsWhenRejected); // not re-decrypted
+    expect(result.current.msgs.messages[0]?.status).toBe("rejected");
   });
 });

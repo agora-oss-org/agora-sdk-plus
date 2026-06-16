@@ -10,8 +10,8 @@ current state + cross-repo notes are in [STATUS.md](../../STATUS.md).
 and now **passphrase backup/restore** (real argon2id+AEAD core + `useSecureBackup` + strength meter)
 are all done. The Phase-2 Definition of Done is met in code; the one remaining proof is the
 **restore-on-new-browser e2e leg** (needs a running agora-server). **Remaining Phase 2 = hardening:**
-generation-counter enforcement, KeyPackage-replenishment tuning, 409 epoch-conflict rebase, eviction
-detect→restore wiring, optional metadata hardening, and the demo screen.
+KeyPackage-replenishment tuning, 409 epoch-conflict rebase, eviction detect→restore wiring, optional
+metadata hardening, and the demo screen. (Generation-counter replay/gap enforcement — done, task 1.3.)
 
 The cardinal rule (see STATUS.md): **crypto lives here; the wire contract lives in agora-server's
 `@agora-server/contract`; the SDK depends on the contract, never the reverse.**
@@ -47,9 +47,13 @@ Both recurring gaps — "persist `privateState`" and "resolve `conversationId �
       mock stays on `./testing` and the bare entry stays dependency-free. Recipient joins from the
       Welcome alone (`ratchetTreeExtension`); state persists via `encode/decodeGroupState`. Proven by
       the dual mock+ts-mls e2e.
-- [ ] **Enforce replay/gap detection** via MLS generation counters — the DS only sanity-bounds epochs
-      (spec §11, open decision #3). The ts-mls core surfaces this via `processMessage` results;
-      enforcement (rejecting stale/gapped generations to the caller) is still **deferred**.
+- [x] **Replay/gap detection enforced + surfaced.** ts-mls's secret-tree ratchet is the enforcement
+      point (rejects replayed generations, bounds the forward gap, tolerates in-window reorder); the SDK
+      **pins** it with characterization tests and **classifies/surfaces** the rejection: `decryptMessage`
+      throws a typed `SecureChatDecryptError(reason)`, and `useSecureMessages` marks the row
+      `status: "rejected"` and fails closed (never re-decrypts it — only future-epoch `pending` rows
+      retry). Optional `keyRetention` knob tightens the window. ADR in STATUS.md (2026-06-08). We do **not**
+      hand-roll a parallel counter (standard #1).
 
 ### 2. Key & group-state persistence — ✅ done (v0.2.0+), except eviction recovery
 - [x] Define a small **persistence interface** (get/set opaque blobs by key) so web uses IndexedDB and
@@ -129,7 +133,9 @@ passphrase backup, with the server storing **only ciphertext**.
 ## Open decisions (SDK-relevant; from spec §16)
 
 1. ts-mls vs OpenMLS-WASM — ✅ **decided: ts-mls** (task 1; see STATUS.md 2026-06-08).
-2. Chosen core must enforce generation-counter replay/gap detection — ts-mls surfaces it; enforcement still **open** (task 1).
+2. Generation-counter replay/gap detection — ✅ **resolved** (task 1.3): ts-mls enforces it; the SDK pins
+   it with characterization tests + classifies/surfaces rejections (`SecureChatDecryptError`,
+   message `status`) + a `keyRetention` knob. ADR in STATUS.md (2026-06-08).
 3. Ciphertext padding strategy (task 6).
 4. Backup-passphrase strength — ✅ **addressed**: `estimatePassphraseStrength` (coarse client-side
    meter) + a memory-hard argon2id KDF (task 5). Hard *enforcement* (reject below a threshold) is left

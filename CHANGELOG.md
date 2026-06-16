@@ -27,6 +27,17 @@ All notable changes to Agora SDK Plus are documented here, following
   passphrase-strength estimator (length + character-class diversity + common-password penalty) for a
   backup-passphrase meter — the blind server holds the ciphertext, so a weak passphrase is
   offline-brute-forceable on a DB exfil (spec §16.5).
+- **Generation-counter replay/gap enforcement, surfaced (Phase 2 task 1.3).** ts-mls's secret-tree
+  ratchet is the enforcement point (rejects replayed generations, bounds the forward gap, tolerates
+  in-window reorder); the SDK now **pins** that with characterization tests and **classifies + surfaces**
+  the rejection instead of silently swallowing it. New `SecureChatDecryptError` (with a
+  `SecureDecryptFailureReason`: `replay` / `gap-too-large` / `epoch-too-old` / `unauthenticated` /
+  `malformed` / `unknown`), thrown by `decryptMessage` (fail closed). `DecryptedSecureMessage` gains a
+  `status` (`ok` | `pending` | `rejected`) + `rejectedReason`, so the app can show a "couldn't be
+  verified" marker. New optional `keyRetention` knob on `createTsMlsSecureChatCrypto` /
+  `createWebSecureChatCrypto` (ts-mls `maximumForwardRatchetSteps` / `retainKeysForGenerations` /
+  `retainKeysForEpochs`) to tighten the window; it's threaded consistently through created, joined,
+  imported, and restored groups (survives a persistence round-trip).
 
 ### Changed
 
@@ -34,13 +45,18 @@ All notable changes to Agora SDK Plus are documented here, following
   symmetric with `importDeviceState`, so the restore flow can re-assert the device server-side and
   recover its row. Both the ts-mls core and the mock implement the new return. Deliberate, documented
   in-repo seam change (the seam is owned here) — no cross-repo coordination.
+- **`useSecureMessages` fails closed on rejected messages.** A message the MLS core refuses (replay,
+  over-window gap, bad auth, malformed, too-old epoch) is now marked `status: "rejected"` and is **never
+  re-decrypted** on a group advance. Only genuinely future-epoch (`pending`) rows are retried — the old
+  code swallowed every failure into `plaintext: null` and retried them forever, masking replays/forgeries
+  as merely "buffered."
 
 ### Not yet implemented
 
 - KeyPackage replenishment loop tuning; backup-restore eviction recovery (now unblocked by task 5);
-  restore-on-new-browser e2e (needs a running agora-server); metadata padding; generation-counter
-  replay/gap enforcement; 409 epoch-conflict rebase on membership commits (the `resync()` seam is in
-  place); `removeMember`/membership churn + multi-device + native (Phase 3).
+  restore-on-new-browser e2e (needs a running agora-server); metadata padding; 409 epoch-conflict rebase
+  on membership commits (the `resync()` seam is in place); `removeMember`/membership churn + multi-device
+  + native (Phase 3).
 
 ## [0.4.0] — 2026-06-08
 

@@ -57,6 +57,47 @@ export interface PassphraseBackup {
   version: number;
 }
 
+/**
+ * Why an inbound message could not be decrypted/authenticated. Drives fail-closed handling at the
+ * caller: a `"replay"` / `"gap-too-large"` / `"unauthenticated"` / `"malformed"` / `"epoch-too-old"`
+ * message is a terminal rejection (drop it), whereas a future-epoch message the client hasn't reached
+ * yet is NOT one of these — the caller decides that by epoch, not by reason.
+ *
+ * - `replay` — the sender generation was already consumed (a replayed/duplicated message).
+ * - `gap-too-large` — the generation jumped further ahead than the ratchet will skip (possible drop/DoS).
+ * - `epoch-too-old` — the message's epoch is older than the retained history; its keys are gone.
+ * - `unauthenticated` — signature/authentication failed (forged or corrupted).
+ * - `malformed` — the bytes didn't decode as a valid MLS message.
+ * - `unknown` — any other decrypt failure.
+ */
+export type SecureDecryptFailureReason =
+  | "replay"
+  | "gap-too-large"
+  | "epoch-too-old"
+  | "unauthenticated"
+  | "malformed"
+  | "unknown";
+
+/**
+ * Thrown by {@link SecureChatCrypto.decryptMessage} when a message fails to decrypt/authenticate. The
+ * MLS core (its secret-tree ratchet) is the single point that enforces replay/gap rejection; this
+ * error simply classifies that failure so the caller can fail closed and surface it. Carries no
+ * plaintext or key material.
+ */
+export class SecureChatDecryptError extends Error {
+  /**
+   * @param reason - The {@link SecureDecryptFailureReason} classification.
+   * @param message - A non-sensitive, human-readable description (never includes plaintext/keys).
+   */
+  constructor(
+    readonly reason: SecureDecryptFailureReason,
+    message: string
+  ) {
+    super(message);
+    this.name = "SecureChatDecryptError";
+  }
+}
+
 export interface SecureChatCrypto {
   // ── identity / device ──────────────────────────────────────────────────────
   generateDeviceIdentity(opts: { deviceId: string; ciphersuite?: number }): Promise<{
@@ -81,6 +122,18 @@ export interface SecureChatCrypto {
     group: GroupHandle,
     plaintext: Uint8Array
   ): Promise<{ ciphertext: Uint8Array; epoch: bigint }>;
+  /**
+   * Decrypt + authenticate one inbound MLS application message. The MLS core's secret-tree ratchet is
+   * the single point that enforces replay/gap rejection (a consumed generation can't be re-derived; a
+   * generation too far ahead is refused) — implementations do not hand-roll a parallel counter. Always
+   * fails closed: on any failure it throws and returns no plaintext.
+   *
+   * @param group - The local group handle.
+   * @param ciphertext - The MLS PrivateMessage bytes (base64-decoded at the wire boundary).
+   * @returns The plaintext, the best-effort sender device id, and the message epoch.
+   * @throws {SecureChatDecryptError} On replay, an over-limit generation gap, a too-old epoch, a failed
+   *   authentication, malformed bytes, or any other decrypt failure (see {@link SecureDecryptFailureReason}).
+   */
   decryptMessage(
     group: GroupHandle,
     ciphertext: Uint8Array

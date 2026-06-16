@@ -7,6 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import { MockSecureChatCrypto } from "./testing";
+import { SecureChatDecryptError } from "./interface.js";
 
 const utf8 = (s: string) => new TextEncoder().encode(s);
 const fromUtf8 = (b: Uint8Array) => new TextDecoder().decode(b);
@@ -112,6 +113,17 @@ describe("MockSecureChatCrypto passphrase backup", () => {
     expect(got.deviceId).toBe("alice-dev");
     expect(got.ciphersuite).toBe(1);
     expect(Array.from(got.signaturePublicKey)).toEqual(Array.from(identity.signaturePublicKey));
+  });
+});
+
+describe("MockSecureChatCrypto decrypt failures", () => {
+  it("surfaces decrypt failures as a typed SecureChatDecryptError (consistent with the real core)", async () => {
+    const c = new MockSecureChatCrypto();
+    const err = await c
+      .decryptMessage({ mlsGroupId: new Uint8Array([9, 9, 9]), epoch: 0n }, new Uint8Array([1]))
+      .then(() => null, (e) => e);
+    expect(err).toBeInstanceOf(SecureChatDecryptError);
+    expect((err as SecureChatDecryptError).reason).toBe("unknown");
   });
 });
 

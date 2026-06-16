@@ -11,6 +11,7 @@ import {
   generateKeyPackageWithKey, defaultCapabilities, defaultLifetime,
   createGroup, createCommit, joinGroup, createApplicationMessage, processMessage,
   encodeMlsMessage, decodeMlsMessage, encodeGroupState, decodeGroupState, zeroOutUint8Array, acceptAll, emptyPskIndex,
+  defaultKeyRetentionConfig,
   type Credential, type CiphersuiteImpl, type KeyPackage, type PrivateKeyPackage, type ClientState,
 } from "ts-mls";
 // makeKeyPackageRef + getGroupMembers + defaultClientConfig aren't re-exported from the package root;
@@ -20,13 +21,32 @@ import { getGroupMembers } from "ts-mls/clientState.js";
 import { defaultClientConfig } from "ts-mls/clientConfig.js";
 import type {
   SecureChatCrypto, DeviceIdentity, KeyPackageBundle, GroupHandle, CommitResult, TargetedWelcome, PassphraseBackup,
+  SecureDecryptFailureReason,
 } from "../interface.js";
+import { SecureChatDecryptError } from "../interface.js";
 import { DEFAULT_CIPHERSUITE_ID, loadCiphersuite } from "./ciphersuite.js";
 import { sealBackup, openBackup } from "./backup.js";
 import { toHex, fromHex } from "./hex.js";
 
 const utf8 = (s: string) => new TextEncoder().encode(s);
 const MLS_VERSION = "mls10" as const;
+
+/**
+ * Map a ts-mls decrypt/process failure to a {@link SecureChatDecryptError} with a classified reason.
+ * Matches on ts-mls's error messages/names (its secret-tree ratchet is the actual enforcement). The
+ * returned message is generic-by-reason — we never echo internal bytes or plaintext into the error.
+ */
+function classifyDecryptError(err: unknown): SecureChatDecryptError {
+  const msg = err instanceof Error ? err.message : String(err);
+  const name = err instanceof Error ? err.name : "";
+  let reason: SecureDecryptFailureReason = "unknown";
+  if (/desired gen(?:eration)? in the past/i.test(msg)) reason = "replay";
+  else if (/too far in the future/i.test(msg)) reason = "gap-too-large";
+  else if (/epoch too old|former epoch/i.test(msg)) reason = "epoch-too-old";
+  else if (name === "CryptoVerificationError" || /signature|verif|auth/i.test(msg)) reason = "unauthenticated";
+  else if (name === "CodecError" || /decode|malformed/i.test(msg)) reason = "malformed";
+  return new SecureChatDecryptError(reason, `secure-chat: message decrypt rejected (${reason})`);
+}
 
 interface DeviceState {
   deviceId: string;
@@ -41,10 +61,30 @@ interface PendingKeyPackage {
   privatePackage: PrivateKeyPackage;
 }
 
+/**
+ * Tuning for the MLS secret-tree ratchet that backs replay/gap enforcement (RFC 9420). These are the
+ * legitimate dials — they tighten or loosen the window, they never disable enforcement. Omitted fields
+ * fall back to ts-mls's conservative defaults.
+ */
+export interface KeyRetentionOptions {
+  /** Max generations the ratchet will skip forward before rejecting (`gap-too-large`). ts-mls default 200. */
+  maximumForwardRatchetSteps?: number;
+  /** How many skipped per-sender message keys to retain (the out-of-order/reorder window). ts-mls default 10. */
+  retainKeysForGenerations?: number;
+  /** How many past epochs of receiver keys to retain (late delivery across a Commit). ts-mls default 4. */
+  retainKeysForEpochs?: number;
+}
+
 /** Options for {@link TsMlsSecureChatCrypto}. */
 export interface TsMlsSecureChatCryptoOptions {
   /** Numeric MLS ciphersuite id (RFC 9420). Defaults to 1 (the MTI baseline). */
   ciphersuite?: number;
+  /**
+   * Override the ts-mls key-retention window (replay/gap tolerance). Defaults to ts-mls's conservative
+   * values. Tightening (e.g. a smaller `maximumForwardRatchetSteps`) narrows the accepted gap; it cannot
+   * turn enforcement off. Applied consistently to created, joined, imported, and restored groups.
+   */
+  keyRetention?: KeyRetentionOptions;
 }
 
 /**
@@ -58,9 +98,18 @@ export class TsMlsSecureChatCrypto implements SecureChatCrypto {
   private credential?: Credential;
   protected readonly pending = new Map<string, PendingKeyPackage>(); // hex(ref) → kp
   protected readonly groups = new Map<string, ClientState>();        // hex(groupId) → state
+  // The single client config (ts-mls clientConfig holds non-serializable callbacks + the key-retention
+  // window). Built once and attached to EVERY group we create/join/import/restore, so the configured
+  // replay/gap window is consistent and survives a persistence round-trip (encodeGroupState drops the
+  // config; we reattach this one rather than ts-mls's default).
+  private readonly clientConfig: typeof defaultClientConfig;
 
   constructor(options: TsMlsSecureChatCryptoOptions = {}) {
     this.ciphersuiteId = options.ciphersuite ?? DEFAULT_CIPHERSUITE_ID;
+    this.clientConfig = {
+      ...defaultClientConfig,
+      keyRetentionConfig: { ...defaultKeyRetentionConfig, ...options.keyRetention },
+    };
   }
 
   /** Lazily load + memoize the ciphersuite primitives. */
@@ -125,7 +174,7 @@ export class TsMlsSecureChatCrypto implements SecureChatCrypto {
     const self = await generateKeyPackageWithKey(
       this.credential!, defaultCapabilities(), defaultLifetime, [], { signKey: dev.signKey, publicKey: dev.publicKey }, cs
     );
-    let state = await createGroup(groupId, self.publicPackage, self.privatePackage, [], cs);
+    let state = await createGroup(groupId, self.publicPackage, self.privatePackage, [], cs, this.clientConfig);
 
     const adds = opts.initialMembers.map((m) => ({
       proposalType: "add" as const, add: { keyPackage: this.decodeKeyPackage(m.keyPackage) },
@@ -183,12 +232,24 @@ export class TsMlsSecureChatCrypto implements SecureChatCrypto {
   }> {
     const cs = await this.cs();
     const state = this.lookupGroup(group);
-    const decoded = decodeMlsMessage(ciphertext, 0);
-    if (!decoded) throw new Error("secure-chat: malformed MLS message");
-    const res = await processMessage(decoded[0] as never, state, emptyPskIndex, acceptAll, cs);
+    // ts-mls's secret-tree ratchet is the enforcement point: it throws on a replayed generation, an
+    // over-limit forward gap, a too-old epoch, or a failed authentication. We classify that throw (and
+    // decode failures) into a SecureChatDecryptError and re-raise it — and crucially we do NOT advance
+    // stored group state on failure (processMessage threw before returning newState), so a rejected
+    // message never ratchets us forward. Fail closed.
+    let res: Awaited<ReturnType<typeof processMessage>>;
+    try {
+      const decoded = decodeMlsMessage(ciphertext, 0);
+      if (!decoded) throw new SecureChatDecryptError("malformed", "secure-chat: malformed MLS message");
+      res = await processMessage(decoded[0] as never, state, emptyPskIndex, acceptAll, cs);
+    } catch (err) {
+      throw err instanceof SecureChatDecryptError ? err : classifyDecryptError(err);
+    }
     this.zeroize(res.consumed);
     this.groups.set(toHex(group.mlsGroupId), res.newState);
-    if (res.kind !== "applicationMessage") throw new Error("secure-chat: expected an application message");
+    if (res.kind !== "applicationMessage") {
+      throw new SecureChatDecryptError("malformed", "secure-chat: expected an application message");
+    }
     return { plaintext: res.message, senderDeviceId: this.peerDeviceId(res.newState), epoch: res.newState.groupContext.epoch };
   }
 
@@ -206,8 +267,10 @@ export class TsMlsSecureChatCrypto implements SecureChatCrypto {
       if (kp) { matchedRef = refHex; matched = kp; break; }
     }
     if (!matched || !matchedRef) throw new Error("secure-chat: no matching KeyPackage for this Welcome");
-    // ratchetTree omitted — it rode in via the creator's ratchetTreeExtension.
-    const state = await joinGroup(welcome, matched.publicPackage, matched.privatePackage, emptyPskIndex, cs);
+    // ratchetTree omitted — it rode in via the creator's ratchetTreeExtension. Pass our clientConfig
+    // (positional args 6/7 — ratchetTree/resumingFromState — are unused here) so the joined group gets
+    // the configured key-retention window, not ts-mls's default.
+    const state = await joinGroup(welcome, matched.publicPackage, matched.privatePackage, emptyPskIndex, cs, undefined, undefined, this.clientConfig);
     this.pending.delete(matchedRef); // one-time: consumed
     this.groups.set(toHex(state.groupContext.groupId), state);
     return { mlsGroupId: state.groupContext.groupId, epoch: state.groupContext.epoch };
@@ -244,7 +307,9 @@ export class TsMlsSecureChatCrypto implements SecureChatCrypto {
   async importGroupState(state: Uint8Array): Promise<GroupHandle> {
     const decoded = decodeGroupState(state, 0);
     if (!decoded) throw new Error("secure-chat: corrupt group state");
-    const clientState: ClientState = { ...decoded[0], clientConfig: defaultClientConfig };
+    // Reattach OUR clientConfig (not ts-mls's default) so the configured key-retention window survives
+    // the persistence round-trip — encodeGroupState drops the (callback-bearing) config.
+    const clientState: ClientState = { ...decoded[0], clientConfig: this.clientConfig };
     this.groups.set(toHex(clientState.groupContext.groupId), clientState);
     return { mlsGroupId: clientState.groupContext.groupId, epoch: clientState.groupContext.epoch };
   }
@@ -302,7 +367,7 @@ export class TsMlsSecureChatCrypto implements SecureChatCrypto {
     for (const g of payload.groups) {
       const decoded = decodeGroupState(fromHex(g), 0);
       if (!decoded) throw new Error("secure-chat: corrupt group state in backup");
-      const clientState: ClientState = { ...decoded[0], clientConfig: defaultClientConfig };
+      const clientState: ClientState = { ...decoded[0], clientConfig: this.clientConfig };
       this.groups.set(toHex(clientState.groupContext.groupId), clientState);
     }
     return identity;

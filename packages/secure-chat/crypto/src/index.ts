@@ -12,4 +12,7 @@ export type {
   TargetedWelcome,
   CommitResult,
   PassphraseBackup,
+  SecureDecryptFailureReason,
 } from "./interface.js";
+// Value export (a real Error subclass) so callers can `instanceof` it to fail closed on a rejected message.
+export { SecureChatDecryptError } from "./interface.js";

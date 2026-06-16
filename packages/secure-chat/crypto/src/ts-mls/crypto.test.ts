@@ -2,9 +2,11 @@
 // Mirrors mock-crypto.test.ts: encryption hides plaintext, a second instance joins via the Welcome
 // and decrypts, and device/group state survives a round-trip onto a FRESH instance.
 import { describe, it, expect } from "vitest";
-import { TsMlsSecureChatCrypto } from "./crypto.js";
+import { TsMlsSecureChatCrypto, type TsMlsSecureChatCryptoOptions } from "./crypto.js";
+import { SecureChatDecryptError } from "../interface.js";
 
 const fromUtf8 = (b: Uint8Array) => new TextDecoder().decode(b);
+const toBytes = (s: string) => new TextEncoder().encode(s);
 
 describe("TsMlsSecureChatCrypto: device + key packages", () => {
   it("generates a stable identity and one-time key packages", async () => {
@@ -120,4 +122,60 @@ describe("TsMlsSecureChatCrypto: passphrase backup/restore", () => {
     const fresh = new TsMlsSecureChatCrypto();
     await expect(fresh.importBackup("wrong", backup)).rejects.toThrow();
   }, SLOW);
+});
+
+describe("TsMlsSecureChatCrypto: replay/gap enforcement (classified, fail-closed)", () => {
+  // Like twoPartyDM but lets the recipient be constructed with custom options (e.g. a tightened window).
+  async function dm(bobOpts?: TsMlsSecureChatCryptoOptions) {
+    const alice = new TsMlsSecureChatCrypto();
+    const bob = new TsMlsSecureChatCrypto(bobOpts);
+    await alice.generateDeviceIdentity({ deviceId: "alice-web" });
+    await bob.generateDeviceIdentity({ deviceId: "bob-web" });
+    const [bobKp] = await bob.generateKeyPackages(1);
+    const { group: aliceGroup, welcomes } = await alice.createGroup({
+      initialMembers: [{ deviceId: "bob-row", keyPackage: bobKp!.keyPackage }],
+    });
+    const bobGroup = await bob.processWelcome(welcomes[0]!.payload);
+    return { alice, bob, aliceGroup, bobGroup };
+  }
+  const reject = async (p: Promise<unknown>): Promise<SecureChatDecryptError> => {
+    const err = await p.then(() => null, (e) => e);
+    expect(err).toBeInstanceOf(SecureChatDecryptError);
+    return err as SecureChatDecryptError;
+  };
+
+  it("rejects a replayed ciphertext as reason 'replay' (and never re-decrypts it)", async () => {
+    const { alice, bob, aliceGroup, bobGroup } = await dm();
+    const { ciphertext } = await alice.encryptMessage(aliceGroup, toBytes("once"));
+    expect(fromUtf8((await bob.decryptMessage(bobGroup, ciphertext)).plaintext)).toBe("once");
+    const err = await reject(bob.decryptMessage(bobGroup, ciphertext));
+    expect(err.reason).toBe("replay");
+  });
+
+  it("classifies malformed ciphertext as reason 'malformed'", async () => {
+    const { bob, bobGroup } = await dm();
+    const err = await reject(bob.decryptMessage(bobGroup, new Uint8Array([1, 2, 3])));
+    expect(err.reason).toBe("malformed");
+  });
+
+  it("rejects an over-window forward gap as reason 'gap-too-large'", async () => {
+    const { alice, bob, aliceGroup, bobGroup } = await dm({ keyRetention: { maximumForwardRatchetSteps: 3 } });
+    let last: Uint8Array | undefined;
+    for (let i = 0; i < 5; i++) last = (await alice.encryptMessage(aliceGroup, toBytes(`m${i}`))).ciphertext;
+    const err = await reject(bob.decryptMessage(bobGroup, last!)); // jumps to gen 4, skipping 4 > 3
+    expect(err.reason).toBe("gap-too-large");
+  });
+
+  it("applies the configured keyRetention window AFTER a group-state import (not reverted to defaults)", async () => {
+    const { alice, bob, aliceGroup, bobGroup } = await dm({ keyRetention: { maximumForwardRatchetSteps: 3 } });
+    // Rebuild bob's group on a fresh instance — also configured tight — from the exported state alone.
+    const blob = await bob.exportGroupState(bobGroup);
+    const bob2 = new TsMlsSecureChatCrypto({ keyRetention: { maximumForwardRatchetSteps: 3 } });
+    const bob2Group = await bob2.importGroupState(blob);
+    let last: Uint8Array | undefined;
+    for (let i = 0; i < 5; i++) last = (await alice.encryptMessage(aliceGroup, toBytes(`m${i}`))).ciphertext;
+    // If import had reverted to ts-mls's default window (200), this gap of 4 would be ACCEPTED.
+    const err = await reject(bob2.decryptMessage(bob2Group, last!));
+    expect(err.reason).toBe("gap-too-large");
+  });
 });

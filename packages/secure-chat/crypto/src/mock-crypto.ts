@@ -23,6 +23,7 @@ import type {
   PassphraseBackup,
   TargetedWelcome,
 } from "./interface.js";
+import { SecureChatDecryptError } from "./interface.js";
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -188,7 +189,7 @@ export class MockSecureChatCrypto implements SecureChatCrypto {
   ): Promise<{ plaintext: Uint8Array; senderDeviceId: string; epoch: bigint }> {
     const idHex = toHex(group.mlsGroupId);
     const st = this.groups.get(idHex);
-    if (!st) throw new Error("mock: unknown group");
+    if (!st) throw new SecureChatDecryptError("unknown", "mock: unknown group");
     // header = "<deviceId>|<epoch>|" — split on the SECOND pipe.
     let pipes = 0;
     let cut = -1;
@@ -201,7 +202,7 @@ export class MockSecureChatCrypto implements SecureChatCrypto {
         }
       }
     }
-    if (cut < 0) throw new Error("mock: malformed ciphertext");
+    if (cut < 0) throw new SecureChatDecryptError("malformed", "mock: malformed ciphertext");
     const [senderDeviceId, epochStr] = dec.decode(ciphertext.slice(0, cut - 1)).split("|");
     const body = ciphertext.slice(cut);
     const ks = keystream(st.secret, body.length);

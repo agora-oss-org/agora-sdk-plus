@@ -93,3 +93,31 @@ Restore is **server-assisted**: the backup is conversationId-agnostic; the hook 
 conversation's group state from the server's conversation list. With this, the Phase-2 Definition of
 Done is met **in code** — the one open proof is the restore-on-new-browser **e2e leg**, deferred until
 a local agora-server is running again.
+
+### ADR — generation-counter replay/gap enforcement (2026-06-08)
+
+**Decision: ts-mls is the single enforcement point for MLS replay/gap/reorder; the SDK does not
+hand-roll a parallel generation counter.** ts-mls's secret-tree ratchet already implements RFC 9420's
+per-sender generation enforcement — it rejects a replayed/consumed generation
+(`ValidationError "Desired gen in the past"`), bounds the forward gap
+(`maximumForwardRatchetSteps`, default 200 → `"too far in the future"`), tolerates in-window reorder
+(`retainKeysForGenerations`, default 10), and zeroizes consumed keys. Re-implementing that at the SDK
+layer would be hand-rolling crypto (against engineering standard #1) and would risk diverging from the
+core's semantics.
+
+**What the SDK adds** (Phase 2 task 1.3 — closes spec §16.3 / `CHAT_TODO.md` #3 "verify the chosen core
+enforces this"):
+1. **Pin it** — characterization tests in `crypto/src/ts-mls/_characterization.test.ts` exercise the raw
+   library so a future ts-mls upgrade that weakens replay/gap fails loudly.
+2. **Classify + surface** — `decryptMessage` maps a core rejection to a typed `SecureChatDecryptError`
+   (`reason`), and `useSecureMessages` marks the row `status: "rejected"` and **fails closed** (no
+   plaintext, never retried). Previously every decrypt failure was swallowed into `plaintext: null` and
+   retried forever, which masked a replay/forgery as an ordinary buffered message. "Is this bufferable?"
+   is decided by **epoch comparison** (`model.epoch > group.epoch`) — a future-epoch message is `pending`
+   and retried when a Commit advances the group; everything else that fails is terminal.
+3. **Tuning knob** — an optional `keyRetention` on `createTsMlsSecureChatCrypto` exposes ts-mls's window
+   (it can only *tighten/loosen*, never disable enforcement), threaded consistently through every group
+   create/join/import/restore so it survives a persistence round-trip.
+
+Generation numbers stay **internal** (not exposed on the seam); message-list completeness comes from the
+durable REST list, not an app-level generation tracker.

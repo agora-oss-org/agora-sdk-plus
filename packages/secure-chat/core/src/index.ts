@@ -54,7 +54,9 @@ export type {
   TargetedWelcome,
   CommitResult,
   PassphraseBackup,
+  SecureDecryptFailureReason,
 } from "@agora-sdk/secure-chat-crypto";
+export { SecureChatDecryptError } from "@agora-sdk/secure-chat-crypto";
 
 // ── wire contract types (transitional — see ./contract) ──────────────────────
 export type * from "./contract/index.js";
