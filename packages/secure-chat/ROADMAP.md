@@ -10,9 +10,9 @@ current state + cross-repo notes are in [STATUS.md](../../STATUS.md).
 and now **passphrase backup/restore** (real argon2id+AEAD core + `useSecureBackup` + strength meter)
 are all done. The Phase-2 Definition of Done is met in code; the one remaining proof is the
 **restore-on-new-browser e2e leg** (needs a running agora-server). **Remaining Phase 2 = hardening:**
-409 epoch-conflict rebase, optional metadata hardening, and the demo screen. (Generation-counter
-enforcement — done, task 1.3; eviction recovery — done, task 2.4; KeyPackage-replenishment tuning —
-done, task 3.)
+409 epoch-conflict rebase and the demo screen. (Generation-counter enforcement — done, task 1.3;
+eviction recovery — done, task 2.4; KeyPackage-replenishment tuning — done, task 3; metadata hardening
+— size-bucket padding + safety number — done, task 6.)
 
 The cardinal rule (see STATUS.md): **crypto lives here; the wire contract lives in agora-server's
 `@agora-server/contract`; the SDK depends on the contract, never the reverse.**
@@ -101,10 +101,13 @@ Both recurring gaps — "persist `privateState`" and "resolve `conversationId �
       `e2e/secure-chat.e2e.ts` (alice backs up → a second client with an empty store restores via
       passphrase → decrypts history). Tracked under task 7.
 
-### 6. Metadata hardening *(optional, Phase 2+)*
-- [ ] Client-side ciphertext **size-bucket padding** (blunts traffic-shape fingerprinting; pairs with
-      the server's Tor track).
-- [ ] **Safety-number / key-verification UI** (out-of-band fingerprint compare) for TOFU hardening.
+### 6. Metadata hardening — ✅ done *(was optional, Phase 2+)*
+- [x] Client-side ciphertext **size-bucket padding** (blunts traffic-shape fingerprinting; pairs with
+      the server's Tor track). *(`core/src/util/padding.ts` — self-describing frame + fixed bucket ladder,
+      applied in `useSecureMessages`; configurable via `<SecureChatProvider padding>`.)*
+- [x] **Safety-number / key-verification** (out-of-band fingerprint compare) for TOFU hardening.
+      *(seam `exportGroupIdentities` + pure `core/src/util/safety-number.ts` (Signal-style 60 digits,
+      symmetric) + `useSecureSafetyNumber` hook — a headless primitive; the styled UI is the demo, task 7.)*
 
 ### 7. Tests + a working demo
 - [x] Mock-backed (`@agora-sdk/secure-chat-crypto/testing`) unit tests of the hooks.
@@ -144,7 +147,8 @@ passphrase backup, with the server storing **only ciphertext**.
 2. Generation-counter replay/gap detection — ✅ **resolved** (task 1.3): ts-mls enforces it; the SDK pins
    it with characterization tests + classifies/surfaces rejections (`SecureChatDecryptError`,
    message `status`) + a `keyRetention` knob. ADR in STATUS.md (2026-06-08).
-3. Ciphertext padding strategy (task 6).
+3. Ciphertext padding strategy — ✅ **decided** (task 6a): a self-describing frame zero-padded to a fixed
+   bucket ladder (`32…8192`, then 8 KiB multiples), applied before MLS encryption; provider-configurable.
 4. Backup-passphrase strength — ✅ **addressed**: `estimatePassphraseStrength` (coarse client-side
    meter) + a memory-hard argon2id KDF (task 5). Hard *enforcement* (reject below a threshold) is left
    to the app/UX.

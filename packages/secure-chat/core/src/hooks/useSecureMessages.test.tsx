@@ -12,6 +12,7 @@ import { SecureChatRepository } from "../persistence/repository.js";
 import { SecureChatRestClient } from "../transport/rest.js";
 import { SecureChatSocketClient } from "../transport/socket.js";
 import { toBase64, fromBase64 } from "../util/base64.js";
+import { padPlaintext, unpadPlaintext } from "../util/padding.js";
 import type { SecureDeviceModel, SecureMessageModel } from "../contract/index.js";
 
 const row: SecureDeviceModel = {
@@ -78,9 +79,10 @@ describe("useSecureMessages", () => {
     const before = new MockSecureChatCrypto();
     await before.generateDeviceIdentity({ deviceId: "me" });
     const { group } = await before.createGroup({ initialMembers: [] });
+    // A real prior message is padded by the send path before encryption, so encrypt the padded frame.
     const { ciphertext: priorCt } = await before.encryptMessage(
       group,
-      new TextEncoder().encode("before reload")
+      padPlaintext(new TextEncoder().encode("before reload"))
     );
 
     const store = new MemoryStore();
@@ -137,7 +139,8 @@ describe("useSecureMessages", () => {
     expect(sentSenderDeviceId).toBe("row-1");
     const decoded = await before.decryptMessage(group, fromBase64(sentCiphertext));
     expect(decoded.senderDeviceId).toBe("me");
-    expect(new TextDecoder().decode(decoded.plaintext)).toBe("after reload");
+    // The send path padded the plaintext; strip the frame to recover the text.
+    expect(new TextDecoder().decode(unpadPlaintext(decoded.plaintext))).toBe("after reload");
   });
 });
 
@@ -177,7 +180,8 @@ describe("useSecureMessages — generation-counter rejection (fail closed)", () 
     const { crypto, store, group } = await seed();
     // Spy keys off the group epoch it's called with: succeed only once we've advanced to epoch ≥ 1.
     vi.spyOn(crypto, "decryptMessage").mockImplementation(async (g: { epoch: bigint }) => {
-      if (g.epoch >= 1n) return { plaintext: enc("hello"), senderDeviceId: "peer", epoch: g.epoch };
+      // decryptMessage returns the padded frame; the hook strips it back to "hello".
+      if (g.epoch >= 1n) return { plaintext: padPlaintext(enc("hello")), senderDeviceId: "peer", epoch: g.epoch };
       throw new SecureChatDecryptError("malformed", "not at this epoch yet");
     });
     vi.spyOn(SecureChatRestClient.prototype, "listMessages").mockResolvedValue({
@@ -221,5 +225,62 @@ describe("useSecureMessages — generation-counter rejection (fail closed)", () 
     await waitFor(() => expect(result.current.chat.getGroupVersion("conv-1")).toBeGreaterThan(0));
     expect(spy.mock.calls.length).toBe(callsWhenRejected); // not re-decrypted
     expect(result.current.msgs.messages[0]?.status).toBe("rejected");
+  });
+});
+
+describe("useSecureMessages — size-bucket padding (task 6a)", () => {
+  const enc = (s: string) => new TextEncoder().encode(s);
+
+  async function seed() {
+    const crypto = new MockSecureChatCrypto();
+    await crypto.generateDeviceIdentity({ deviceId: "me" });
+    const { group } = await crypto.createGroup({ initialMembers: [] });
+    const store = new MemoryStore();
+    const repo = new SecureChatRepository(store);
+    await repo.saveGroupState("conv-1", await crypto.exportGroupState(group));
+    await repo.saveDevice({ deviceId: "me", deviceState: await crypto.exportDeviceState(), device: row });
+    return { crypto, store, group };
+  }
+
+  it("pads outbound plaintext to a size bucket before encryption", async () => {
+    const { crypto, store } = await seed();
+    // Capture what the crypto layer is asked to encrypt — it must be the padded frame, not raw text.
+    const encSpy = vi.spyOn(crypto, "encryptMessage");
+    vi.spyOn(SecureChatRestClient.prototype, "sendMessage").mockImplementation(
+      async (_c, body): Promise<SecureMessageModel> => ({
+        id: "m1", projectId: "p", conversationId: "conv-1", senderUserId: "u", senderDeviceId: "row-1",
+        epoch: "0", ciphertext: body.ciphertext, contentType: "text/plain", createdAt: "",
+      })
+    );
+
+    const { result } = renderHook(() => useSecureMessages("conv-1"), { wrapper: wrap(crypto, store) });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(async () => {
+      await result.current.sendMessage("hi");
+    });
+
+    const framed = encSpy.mock.calls[0][1] as Uint8Array;
+    expect(framed.length).toBe(32); // "hi" → 2 + 5-byte header → bucket 32, not 2 bytes
+    expect(result.current.messages[0]?.plaintext).toBe("hi"); // optimistic text preserved
+  });
+
+  it("fails closed when the decrypted frame is malformed (authenticated but bad padding)", async () => {
+    const { crypto, store } = await seed();
+    // Authentication succeeds but the bytes are not a valid padding frame → reject as malformed.
+    vi.spyOn(crypto, "decryptMessage").mockResolvedValue({
+      plaintext: enc("not a frame"), senderDeviceId: "peer", epoch: 0n,
+    });
+    vi.spyOn(SecureChatRestClient.prototype, "listMessages").mockResolvedValue({
+      messages: [{
+        id: "m1", projectId: "p", conversationId: "conv-1", senderUserId: "u", senderDeviceId: "peer",
+        epoch: "0", ciphertext: toBase64(enc("x")), contentType: "text/plain", createdAt: "",
+      }],
+      hasMore: false,
+    });
+
+    const { result } = renderHook(() => useSecureMessages("conv-1"), { wrapper: wrap(crypto, store) });
+    await waitFor(() => expect(result.current.messages[0]?.status).toBe("rejected"));
+    expect(result.current.messages[0]?.rejectedReason).toBe("malformed");
+    expect(result.current.messages[0]?.plaintext).toBeNull();
   });
 });

@@ -20,7 +20,7 @@ import { makeKeyPackageRef } from "ts-mls/keyPackage.js";
 import { getGroupMembers } from "ts-mls/clientState.js";
 import { defaultClientConfig } from "ts-mls/clientConfig.js";
 import type {
-  SecureChatCrypto, DeviceIdentity, KeyPackageBundle, GroupHandle, CommitResult, TargetedWelcome, PassphraseBackup,
+  SecureChatCrypto, DeviceIdentity, KeyPackageBundle, GroupHandle, GroupMemberIdentity, CommitResult, TargetedWelcome, PassphraseBackup,
   SecureDecryptFailureReason,
 } from "../interface.js";
 import { SecureChatDecryptError } from "../interface.js";
@@ -251,6 +251,21 @@ export class TsMlsSecureChatCrypto implements SecureChatCrypto {
       throw new SecureChatDecryptError("malformed", "secure-chat: expected an application message");
     }
     return { plaintext: res.message, senderDeviceId: this.peerDeviceId(res.newState), epoch: res.newState.groupContext.epoch };
+  }
+
+  async exportGroupIdentities(group: GroupHandle): Promise<GroupMemberIdentity[]> {
+    const state = this.lookupGroup(group);
+    const out: GroupMemberIdentity[] = [];
+    // Read the roster from the MLS ratchet tree (same source peerDeviceId uses). Only basic-credential
+    // leaves carry a device-id identity; skip anything else rather than guess.
+    for (const leaf of getGroupMembers(state)) {
+      if (leaf.credential.credentialType !== "basic") continue;
+      out.push({
+        deviceId: new TextDecoder().decode(leaf.credential.identity),
+        signaturePublicKey: leaf.signaturePublicKey,
+      });
+    }
+    return out;
   }
 
   async processWelcome(welcomePayload: Uint8Array): Promise<GroupHandle> {

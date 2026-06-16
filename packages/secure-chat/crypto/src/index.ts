@@ -9,6 +9,7 @@ export type {
   DeviceIdentity,
   KeyPackageBundle,
   GroupHandle,
+  GroupMemberIdentity,
   TargetedWelcome,
   CommitResult,
   PassphraseBackup,

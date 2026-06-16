@@ -33,6 +33,15 @@ export interface GroupHandle {
   epoch: bigint;
 }
 
+/** One member of a group, as seen in the local MLS roster: a device id + its signature public key.
+ *  The public key is what a safety number / key-verification fingerprint is derived from. */
+export interface GroupMemberIdentity {
+  /** The member device's stable id (the MLS credential identity). */
+  deviceId: string;
+  /** The member device's MLS signature PUBLIC key (safe to expose; never the private half). */
+  signaturePublicKey: Uint8Array;
+}
+
 /** A Welcome destined for exactly one new-member device (the one whose KeyPackage was used). */
 export interface TargetedWelcome {
   targetDeviceId: string;
@@ -138,6 +147,18 @@ export interface SecureChatCrypto {
     group: GroupHandle,
     ciphertext: Uint8Array
   ): Promise<{ plaintext: Uint8Array; senderDeviceId: string; epoch: bigint }>;
+
+  // ── roster / key verification ───────────────────────────────────────────────
+  /**
+   * List the members of a joined group as `{ deviceId, signaturePublicKey }`, read from the local MLS
+   * roster. The public keys feed an out-of-band safety-number / key-verification fingerprint (TOFU
+   * hardening against a blind server swapping a KeyPackage). Returns public material only.
+   *
+   * @param group - The local group handle.
+   * @returns The group's members (order is implementation-defined; callers that need stability sort).
+   * @throws {Error} When the group is unknown (not joined / evicted).
+   */
+  exportGroupIdentities(group: GroupHandle): Promise<GroupMemberIdentity[]>;
 
   // ── processing inbound handshakes ───────────────────────────────────────────
   processWelcome(welcome: Uint8Array): Promise<GroupHandle>;

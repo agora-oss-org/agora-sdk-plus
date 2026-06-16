@@ -29,6 +29,8 @@ export type {
 } from "./hooks/useSecureHandshakes.js";
 export { useSecureBackup } from "./hooks/useSecureBackup.js";
 export type { UseSecureBackupValues } from "./hooks/useSecureBackup.js";
+export { useSecureSafetyNumber } from "./hooks/useSecureSafetyNumber.js";
+export type { UseSecureSafetyNumberValues } from "./hooks/useSecureSafetyNumber.js";
 
 // ── backup (passphrase strength meter) ────────────────────────────────────────
 export { estimatePassphraseStrength } from "./backup/passphrase-strength.js";
@@ -51,6 +53,7 @@ export type {
   DeviceIdentity,
   KeyPackageBundle,
   GroupHandle,
+  GroupMemberIdentity,
   TargetedWelcome,
   CommitResult,
   PassphraseBackup,
@@ -69,3 +72,7 @@ export type { PersistedDevice } from "./persistence/repository.js";
 
 // ── utils ────────────────────────────────────────────────────────────────────
 export { toBase64, fromBase64, utf8ToBytes, bytesToUtf8 } from "./util/base64.js";
+export { padPlaintext, unpadPlaintext, nextBucket } from "./util/padding.js";
+export type { PaddingPolicy } from "./util/padding.js";
+export { computeSafetyNumber } from "./util/safety-number.js";
+export type { SafetyNumber } from "./util/safety-number.js";

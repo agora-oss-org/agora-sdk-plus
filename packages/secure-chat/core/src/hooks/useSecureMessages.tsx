@@ -13,6 +13,7 @@ import {
   type SecureDecryptFailureReason,
 } from "@agora-sdk/secure-chat-crypto";
 import { toBase64, fromBase64, utf8ToBytes, bytesToUtf8 } from "../util/base64.js";
+import { padPlaintext, unpadPlaintext } from "../util/padding.js";
 import { useSecureChat } from "../context/secure-chat-context.js";
 
 /**
@@ -84,7 +85,7 @@ export function useSecureMessages(
   conversationId: string,
   options: UseSecureMessagesOptions = {}
 ): UseSecureMessagesValues {
-  const { rest, crypto, socket, repo, resolveGroup, getGroupVersion, subscribeGroupChange } =
+  const { rest, crypto, socket, repo, resolveGroup, getGroupVersion, subscribeGroupChange, padding } =
     useSecureChat();
 
   const [messages, setMessages] = useState<DecryptedSecureMessage[]>([]);
@@ -158,9 +159,9 @@ export function useSecureMessages(
     async (model: SecureMessageModel): Promise<DecryptedSecureMessage> => {
       // No handle yet (still resolving) → retryable once it arrives.
       if (!group) return { model, plaintext: null, status: "pending" };
+      let plaintext: Uint8Array;
       try {
-        const { plaintext } = await crypto.decryptMessage(group, fromBase64(model.ciphertext));
-        return { model, plaintext: bytesToUtf8(plaintext), status: "ok" };
+        ({ plaintext } = await crypto.decryptMessage(group, fromBase64(model.ciphertext)));
       } catch (err) {
         // Classify, don't conflate. A message from an epoch we HAVEN'T reached yet is legitimately
         // buffered (a future Commit will advance us, then this re-decrypts). Anything else that fails
@@ -173,6 +174,15 @@ export function useSecureMessages(
         const rejectedReason: SecureDecryptFailureReason =
           err instanceof SecureChatDecryptError ? err.reason : "unknown";
         return { model, plaintext: null, status: "rejected", rejectedReason };
+      }
+      // Decrypt + MLS authentication succeeded, so the bytes are from a real group member. Strip the
+      // size-bucket padding frame (see util/padding). A bad frame here is NOT a decrypt failure — it's a
+      // framing/version mismatch from an authenticated sender — so fail closed as "malformed" rather
+      // than rendering raw padded bytes as text.
+      try {
+        return { model, plaintext: bytesToUtf8(unpadPlaintext(plaintext)), status: "ok" };
+      } catch {
+        return { model, plaintext: null, status: "rejected", rejectedReason: "malformed" };
       }
     },
     [crypto, group]
@@ -219,7 +229,12 @@ export function useSecureMessages(
       // reload the first send must wait for useSecureDevice's importDeviceState to complete.
       if (!group) throw new Error("Cannot send: no MLS group handle for this conversation.");
       if (!senderDeviceId) throw new Error("Cannot send: senderDeviceId is required.");
-      const { ciphertext, epoch } = await crypto.encryptMessage(group, utf8ToBytes(text));
+      // Pad the plaintext to a size bucket BEFORE encryption so the ciphertext length leaks less
+      // (the receiver strips the frame in `decrypt`). See util/padding for the framing.
+      const { ciphertext, epoch } = await crypto.encryptMessage(
+        group,
+        padPlaintext(utf8ToBytes(text), padding)
+      );
       const sent = await rest.sendMessage(conversationId, {
         ciphertext: toBase64(ciphertext),
         epoch: epoch.toString(),
@@ -228,7 +243,7 @@ export function useSecureMessages(
       // Optimistic: we know our own plaintext without a round-trip through decrypt.
       setMessages((prev) => [{ model: sent, plaintext: text, status: "ok" }, ...prev]);
     },
-    [crypto, rest, conversationId, group, senderDeviceId]
+    [crypto, rest, conversationId, group, senderDeviceId, padding]
   );
 
   useEffect(() => {

@@ -8,6 +8,25 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Added
 
+- **Ciphertext size-bucket padding (Phase 2 task 6a).** Outbound message plaintext is now wrapped in a
+  self-describing frame (`[version][contentLen][content][zero pad]`) and zero-padded up to a fixed size
+  bucket **before** MLS encryption, so the ciphertext length leaks less traffic shape to the blind
+  server (the Signal-model metadata concession). New dependency-free codec
+  `@agora-sdk/secure-chat-core` `util/padding` (`padPlaintext`/`unpadPlaintext`/`nextBucket`,
+  `PaddingPolicy`); ladder is `32,64,…,8192` then 8 KiB multiples. `useSecureMessages` pads on send and
+  strips on receive — an authenticated message with a bad frame fails closed as `rejected`/`malformed`
+  rather than rendering raw bytes. Configurable via the new `<SecureChatProvider padding>` prop
+  (`"ladder"` default, `"none"` = frame-only). No server changes.
+- **Safety number / key verification (Phase 2 task 6b).** A new headless primitive for out-of-band
+  identity-key verification (TOFU hardening against a blind-but-untrusted server swapping a KeyPackage).
+  New seam method `SecureChatCrypto.exportGroupIdentities(group)` (+ `GroupMemberIdentity` type) lists a
+  group's members' **public** signature keys from the local MLS roster (implemented in the ts-mls core
+  and the mock). New pure `@agora-sdk/secure-chat-core` `util/safety-number` `computeSafetyNumber(a, b)`
+  derives a Signal-style **60-digit** number (12 groups of 5) symmetrically (sorted so both sides match)
+  via iterated SHA-256, plus raw fingerprint bytes for a QR. New `useSecureSafetyNumber(conversationId)`
+  hook resolves the DM roster and returns the comparable number (null for non-DM / unresolved groups).
+  All client-side; no server changes.
+
 - **KeyPackage replenishment tuning (Phase 2 task 3).** `useSecureDevice` now keeps the single-use
   KeyPackage stock topped up smarter and from more triggers. New configurable `keyPackageLowWater`
   option (default `ceil(keyPackageTarget / 2)`, i.e. 10 for the default target of 20): when the server

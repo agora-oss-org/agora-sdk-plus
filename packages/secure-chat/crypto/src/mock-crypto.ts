@@ -19,6 +19,7 @@ import type {
   DeviceIdentity,
   KeyPackageBundle,
   GroupHandle,
+  GroupMemberIdentity,
   CommitResult,
   PassphraseBackup,
   TargetedWelcome,
@@ -70,11 +71,13 @@ function parseJson<T>(b: Uint8Array): T {
 interface GroupState {
   secret: Uint8Array; // per-group symmetric secret (the mock's stand-in for MLS group secrets)
   epoch: bigint;
+  members: string[]; // device ids in the roster (the mock's stand-in for the MLS ratchet tree)
 }
 interface WelcomePayload {
   groupId: string; // hex
   secret: string; // hex
   epoch: string;
+  members: string[]; // roster carried in the Welcome so a joiner sees the same members
 }
 
 export class MockSecureChatCrypto implements SecureChatCrypto {
@@ -117,13 +120,15 @@ export class MockSecureChatCrypto implements SecureChatCrypto {
       bytesFrom(`grp:${did}:${opts.initialMembers.map((m) => m.deviceId).join(",")}`, 16);
     const idHex = toHex(mlsGroupId);
     const secret = bytesFrom(`secret:${idHex}:${did}`, 32);
-    this.groups.set(idHex, { secret, epoch: 0n });
+    const members = [did, ...opts.initialMembers.map((m) => m.deviceId)];
+    this.groups.set(idHex, { secret, epoch: 0n, members });
     const welcomes = opts.initialMembers.map((m) => ({
       targetDeviceId: m.deviceId,
       payload: jsonBytes({
         groupId: idHex,
         secret: toHex(secret),
         epoch: "0",
+        members,
       } satisfies WelcomePayload),
     }));
     return { group: { mlsGroupId, epoch: 0n }, welcomes };
@@ -138,6 +143,7 @@ export class MockSecureChatCrypto implements SecureChatCrypto {
     if (!st) throw new Error("mock: unknown group");
     st.epoch += 1n;
     const epoch = st.epoch;
+    if (!st.members.includes(newDevice.deviceId)) st.members.push(newDevice.deviceId);
     return {
       commit: jsonBytes({ type: "commit", groupId: idHex, epoch: epoch.toString() }),
       welcomes: [
@@ -147,6 +153,7 @@ export class MockSecureChatCrypto implements SecureChatCrypto {
             groupId: idHex,
             secret: toHex(st.secret),
             epoch: epoch.toString(),
+            members: st.members,
           } satisfies WelcomePayload),
         },
       ],
@@ -154,11 +161,12 @@ export class MockSecureChatCrypto implements SecureChatCrypto {
     };
   }
 
-  async removeMember(group: GroupHandle, _leafDeviceId: string): Promise<CommitResult> {
+  async removeMember(group: GroupHandle, leafDeviceId: string): Promise<CommitResult> {
     const idHex = toHex(group.mlsGroupId);
     const st = this.groups.get(idHex);
     if (!st) throw new Error("mock: unknown group");
     st.epoch += 1n;
+    st.members = st.members.filter((m) => m !== leafDeviceId);
     return {
       commit: jsonBytes({ type: "commit", groupId: idHex, epoch: st.epoch.toString() }),
       welcomes: [],
@@ -215,8 +223,24 @@ export class MockSecureChatCrypto implements SecureChatCrypto {
 
   async processWelcome(welcome: Uint8Array): Promise<GroupHandle> {
     const w = parseJson<WelcomePayload>(welcome);
-    this.groups.set(w.groupId, { secret: fromHex(w.secret), epoch: BigInt(w.epoch) });
+    this.groups.set(w.groupId, {
+      secret: fromHex(w.secret),
+      epoch: BigInt(w.epoch),
+      members: w.members ?? [],
+    });
     return { mlsGroupId: fromHex(w.groupId), epoch: BigInt(w.epoch) };
+  }
+
+  async exportGroupIdentities(group: GroupHandle): Promise<GroupMemberIdentity[]> {
+    const idHex = toHex(group.mlsGroupId);
+    const st = this.groups.get(idHex);
+    if (!st) throw new Error("mock: unknown group");
+    // The mock derives each device's signature key deterministically from its id (see
+    // generateDeviceIdentity), so the roster of device ids is enough to reconstruct every member's key.
+    return st.members.map((deviceId) => ({
+      deviceId,
+      signaturePublicKey: bytesFrom(`sig:${deviceId}`, 32),
+    }));
   }
 
   async processCommit(group: GroupHandle, commit: Uint8Array): Promise<GroupHandle> {
@@ -267,12 +291,21 @@ export class MockSecureChatCrypto implements SecureChatCrypto {
     const idHex = toHex(group.mlsGroupId);
     const st = this.groups.get(idHex);
     if (!st) throw new Error("mock: unknown group");
-    return jsonBytes({ groupId: idHex, secret: toHex(st.secret), epoch: st.epoch.toString() });
+    return jsonBytes({
+      groupId: idHex,
+      secret: toHex(st.secret),
+      epoch: st.epoch.toString(),
+      members: st.members,
+    });
   }
 
   async importGroupState(state: Uint8Array): Promise<GroupHandle> {
-    const s = parseJson<{ groupId: string; secret: string; epoch: string }>(state);
-    this.groups.set(s.groupId, { secret: fromHex(s.secret), epoch: BigInt(s.epoch) });
+    const s = parseJson<{ groupId: string; secret: string; epoch: string; members?: string[] }>(state);
+    this.groups.set(s.groupId, {
+      secret: fromHex(s.secret),
+      epoch: BigInt(s.epoch),
+      members: s.members ?? [],
+    });
     return { mlsGroupId: fromHex(s.groupId), epoch: BigInt(s.epoch) };
   }
 
@@ -281,6 +314,7 @@ export class MockSecureChatCrypto implements SecureChatCrypto {
       id,
       secret: toHex(st.secret),
       epoch: st.epoch.toString(),
+      members: st.members,
     }));
     const plain = jsonBytes({
       magic: BACKUP_MAGIC,
@@ -311,7 +345,7 @@ export class MockSecureChatCrypto implements SecureChatCrypto {
       identityPriv: string | null;
       deviceId: string | null;
       ciphersuite?: number;
-      groups: { id: string; secret: string; epoch: string }[];
+      groups: { id: string; secret: string; epoch: string; members?: string[] }[];
     };
     try {
       parsed = parseJson(plain);
@@ -323,7 +357,7 @@ export class MockSecureChatCrypto implements SecureChatCrypto {
     }
     if (parsed.identityPriv) this.privateState = fromHex(parsed.identityPriv);
     for (const g of parsed.groups) {
-      this.groups.set(g.id, { secret: fromHex(g.secret), epoch: BigInt(g.epoch) });
+      this.groups.set(g.id, { secret: fromHex(g.secret), epoch: BigInt(g.epoch), members: g.members ?? [] });
     }
     // Rebuild the (deterministic) identity so the restored mock is usable, and return it — symmetric
     // with importDeviceState, so the restore flow can re-assert the device server-side.

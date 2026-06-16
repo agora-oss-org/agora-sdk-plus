@@ -15,6 +15,7 @@ import { SecureChatSocketClient } from "../transport/socket.js";
 import { SecureChatStore } from "../persistence/store.js";
 import { MemoryStore } from "../persistence/memory-store.js";
 import { SecureChatRepository } from "../persistence/repository.js";
+import { PaddingPolicy } from "../util/padding.js";
 
 /**
  * The value exposed by {@link useSecureChat}: shared transport clients, the injected crypto, the
@@ -43,6 +44,11 @@ export interface SecureChatContextValue {
    * @returns An unsubscribe function.
    */
   subscribeGroupChange: (listener: () => void) => () => void;
+  /**
+   * Outbound message size-bucket padding policy. `useSecureMessages` pads plaintext to this before
+   * encryption so ciphertext size leaks less; defaults to `"ladder"`.
+   */
+  padding: PaddingPolicy;
   /** The Agora project id these clients are scoped to. */
   projectId: string;
 }
@@ -65,6 +71,11 @@ export interface SecureChatProviderProps {
   baseUrl?: string;
   /** Override the socket origin. Defaults to @agora-sdk/core `getSocketUrl()`. */
   socketUrl?: string;
+  /**
+   * Outbound message size-bucket padding policy (metadata hardening). `"ladder"` (default) pads each
+   * message up to a fixed size bucket so ciphertext length leaks less; `"none"` frames without padding.
+   */
+  padding?: PaddingPolicy;
   children: React.ReactNode;
 }
 
@@ -90,6 +101,7 @@ export function SecureChatProvider({
   getAccessToken,
   baseUrl,
   socketUrl,
+  padding = "ladder",
   children,
 }: SecureChatProviderProps) {
   const tokenRef = useRef<string | undefined>(accessToken);
@@ -186,6 +198,7 @@ export function SecureChatProvider({
       rememberGroup,
       getGroupVersion,
       subscribeGroupChange,
+      padding,
       projectId,
     }),
     [
@@ -197,6 +210,7 @@ export function SecureChatProvider({
       rememberGroup,
       getGroupVersion,
       subscribeGroupChange,
+      padding,
       projectId,
     ]
   );

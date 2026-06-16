@@ -30,6 +30,7 @@ export function createNativeSecureChatCrypto(): SecureChatCrypto {
     removeMember: notImplemented,
     encryptMessage: notImplemented,
     decryptMessage: notImplemented,
+    exportGroupIdentities: notImplemented,
     processWelcome: notImplemented,
     processCommit: notImplemented,
     processProposal: notImplemented,

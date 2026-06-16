@@ -11,6 +11,7 @@ import { SecureChatRepository } from "../persistence/repository.js";
 import { SecureChatRestClient } from "../transport/rest.js";
 import { SecureChatSocketClient } from "../transport/socket.js";
 import { toBase64 } from "../util/base64.js";
+import { padPlaintext } from "../util/padding.js";
 import type { SecureDeviceModel, SecureHandshakeModel, SecureMessageModel } from "../contract/index.js";
 
 const bobRow: SecureDeviceModel = {
@@ -141,7 +142,7 @@ describe("useSecureHandshakes", () => {
 
   it("live flush: a message that arrived before the group resolves decrypts once the Welcome lands", async () => {
     const { creator, group, welcomePayload } = await makeGroupAndWelcome();
-    const { ciphertext } = await creator.encryptMessage(group, new TextEncoder().encode("hello bob"));
+    const { ciphertext } = await creator.encryptMessage(group, padPlaintext(new TextEncoder().encode("hello bob")));
     const msgRow: SecureMessageModel = {
       id: "m1", projectId: "p", conversationId: "conv-1", senderUserId: "alice", senderDeviceId: "alice-row",
       epoch: "0", ciphertext: toBase64(ciphertext), contentType: "text/plain", createdAt: "",
