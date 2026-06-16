@@ -27,6 +27,13 @@ All notable changes to Agora SDK Plus are documented here, following
   passphrase-strength estimator (length + character-class diversity + common-password penalty) for a
   backup-passphrase meter — the blind server holds the ciphertext, so a weak passphrase is
   offline-brute-forceable on a DB exfil (spec §16.5).
+- **Eviction recovery (Phase 2 task 2.4).** `useSecureBackup` now detects an evicted/fresh client on
+  mount — no local key material but a backup exists on the server (Safari ITP, "clear browsing data",
+  or a new browser are indistinguishable and resolve the same way) — and exposes `needsRestore` (plus
+  `checkingRestore` and an on-demand `recheckRestore()`), so the app routes to a passphrase prompt →
+  `restore()` instead of registering a fresh, history-less identity. The check only hits the server
+  when local state is gone (the healthy path stays a single IndexedDB read) and fails soft on a network
+  error.
 - **Generation-counter replay/gap enforcement, surfaced (Phase 2 task 1.3).** ts-mls's secret-tree
   ratchet is the enforcement point (rejects replayed generations, bounds the forward gap, tolerates
   in-window reorder); the SDK now **pins** that with characterization tests and **classifies + surfaces**
@@ -53,10 +60,9 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Not yet implemented
 
-- KeyPackage replenishment loop tuning; backup-restore eviction recovery (now unblocked by task 5);
-  restore-on-new-browser e2e (needs a running agora-server); metadata padding; 409 epoch-conflict rebase
-  on membership commits (the `resync()` seam is in place); `removeMember`/membership churn + multi-device
-  + native (Phase 3).
+- KeyPackage replenishment loop tuning; restore-on-new-browser e2e (needs a running agora-server);
+  metadata padding; 409 epoch-conflict rebase on membership commits (the `resync()` seam is in place);
+  `removeMember`/membership churn + multi-device + native (Phase 3).
 
 ## [0.4.0] — 2026-06-08
 

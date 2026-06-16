@@ -42,6 +42,22 @@ export interface UseSecureBackupValues {
   lastBackupAt: string | null;
   /** True once a group has advanced since the last backup (membership/epoch change) — prompt a re-backup. */
   needsBackup: boolean;
+  /**
+   * True when there is NO local key material but a backup exists on the server — i.e. this client was
+   * evicted (Safari ITP / "clear browsing data") or is a fresh browser, and recovery is possible. The
+   * app should route to a passphrase prompt → {@link UseSecureBackupValues.restore} instead of
+   * registering a new device. Indistinguishable cases (evicted vs cleared vs new browser) all resolve
+   * the same way. Cleared after a successful restore.
+   */
+  needsRestore: boolean;
+  /** True while the mount-time eviction check (or {@link UseSecureBackupValues.recheckRestore}) is in flight. */
+  checkingRestore: boolean;
+  /**
+   * Re-run the eviction check on demand (e.g. after catching a storage error mid-session, or after
+   * sign-in). Skips the server entirely when local key material is present.
+   * @returns The new {@link UseSecureBackupValues.needsRestore} value.
+   */
+  recheckRestore: () => Promise<boolean>;
   /** Coarse client-side passphrase-strength estimate for a meter (see {@link estimatePassphraseStrength}). */
   estimateStrength: (passphrase: string) => PassphraseStrength;
 }
@@ -50,17 +66,24 @@ export interface UseSecureBackupValues {
  * Manage passphrase backup + restore of the client's secure-chat key material.
  *
  * Backups are explicit (call {@link UseSecureBackupValues.backup}); `needsBackup` flips true when a
- * group advances so the app can prompt. Restore is the fresh-browser recovery path.
+ * group advances so the app can prompt. On mount it also detects an evicted/fresh client
+ * (`needsRestore`) so the app restores rather than registering a fresh, history-less identity.
  *
- * @returns Backup/restore actions, in-flight + error state, a stale-backup signal, and a passphrase-strength helper.
+ * @returns Backup/restore actions, the evicted-client `needsRestore` signal, in-flight + error state, a
+ *   stale-backup signal, and a passphrase-strength helper.
  * @throws {Error} When used outside a `<SecureChatProvider>`.
  *
  * @example
  * ```tsx
- * const { backup, restore, needsBackup, estimateStrength } = useSecureBackup();
- * await backup(passphrase);            // after registering a device / starting a chat
- * await restore(passphrase);           // on a new browser, before rendering the chat
+ * const { needsRestore, restore, backup } = useSecureBackup();
+ * const { device, register } = useSecureDevice();
+ * // Route an evicted / fresh client to restore; a true first-run to register.
+ * if (needsRestore) await restore(passphrase);      // prompt for the passphrase first
+ * else if (!device) await register();
+ * await backup(passphrase);                          // later, after a device/chat exists
  * ```
+ * Restore should complete before the app relies on `useSecureDevice` (which read `device: null` on its
+ * own mount) — gate the chat subtree on a post-restore flag or remount it after restore.
  */
 export function useSecureBackup(): UseSecureBackupValues {
   const { crypto, rest, repo, rememberGroup, subscribeGroupChange } = useSecureChat();
@@ -70,6 +93,8 @@ export function useSecureBackup(): UseSecureBackupValues {
   const [error, setError] = useState<unknown>(null);
   const [lastBackupAt, setLastBackupAt] = useState<string | null>(null);
   const [needsBackup, setNeedsBackup] = useState(false);
+  const [needsRestore, setNeedsRestore] = useState(false);
+  const [checkingRestore, setCheckingRestore] = useState(false);
 
   // A group advancing (a join or a processed Commit) means the on-server backup is now stale.
   // Guard the very first synchronous fire so mount doesn't immediately flag a backup as needed.
@@ -80,6 +105,49 @@ export function useSecureBackup(): UseSecureBackupValues {
       if (armed.current) setNeedsBackup(true);
     });
   }, [subscribeGroupChange]);
+
+  // Eviction / fresh-client detection: local key material gone but a server backup exists ⇒ restore is
+  // possible (and preferable to registering a new, history-less identity). Evicted, "cleared browsing
+  // data", and a brand-new browser are indistinguishable here and resolve the same way. We only hit the
+  // server when there's no local device, so the common (healthy) path stays a single IndexedDB read.
+  const recheckRestore = useCallback(async (): Promise<boolean> => {
+    setCheckingRestore(true);
+    try {
+      const persisted = await repo.loadDevice();
+      if (persisted) {
+        setNeedsRestore(false);
+        return false;
+      }
+      const model = await rest.getKeyBackup();
+      const possible = model !== null;
+      setNeedsRestore(possible);
+      return possible;
+    } catch (err) {
+      // Fail soft: a network blip must not strand the user as "needs restore". Surface the error only.
+      setError(err);
+      setNeedsRestore(false);
+      return false;
+    } finally {
+      setCheckingRestore(false);
+    }
+  }, [repo, rest]);
+
+  useEffect(() => {
+    let alive = true;
+    repo
+      .loadDevice()
+      .then(async (persisted) => {
+        if (!alive || persisted) return; // have local state → not evicted; skip the server call
+        const model = await rest.getKeyBackup();
+        if (alive) setNeedsRestore(model !== null);
+      })
+      .catch((err) => {
+        if (alive) setError(err); // fail soft
+      });
+    return () => {
+      alive = false;
+    };
+  }, [repo, rest]);
 
   const backup = useCallback(
     async (passphrase: string): Promise<void> => {
@@ -160,6 +228,7 @@ export function useSecureBackup(): UseSecureBackupValues {
         }
 
         setNeedsBackup(false);
+        setNeedsRestore(false); // we now hold local key material again
       } catch (err) {
         setError(err);
         throw err;
@@ -178,6 +247,9 @@ export function useSecureBackup(): UseSecureBackupValues {
     error,
     lastBackupAt,
     needsBackup,
+    needsRestore,
+    checkingRestore,
+    recheckRestore,
     estimateStrength: estimatePassphraseStrength,
   };
 }

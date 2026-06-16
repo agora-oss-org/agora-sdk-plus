@@ -10,8 +10,8 @@ current state + cross-repo notes are in [STATUS.md](../../STATUS.md).
 and now **passphrase backup/restore** (real argon2id+AEAD core + `useSecureBackup` + strength meter)
 are all done. The Phase-2 Definition of Done is met in code; the one remaining proof is the
 **restore-on-new-browser e2e leg** (needs a running agora-server). **Remaining Phase 2 = hardening:**
-KeyPackage-replenishment tuning, 409 epoch-conflict rebase, eviction detect→restore wiring, optional
-metadata hardening, and the demo screen. (Generation-counter replay/gap enforcement — done, task 1.3.)
+KeyPackage-replenishment tuning, 409 epoch-conflict rebase, optional metadata hardening, and the demo
+screen. (Generation-counter enforcement — done, task 1.3; eviction recovery — done, task 2.4.)
 
 The cardinal rule (see STATUS.md): **crypto lives here; the wire contract lives in agora-server's
 `@agora-server/contract`; the SDK depends on the contract, never the reverse.**
@@ -55,16 +55,18 @@ Both recurring gaps — "persist `privateState`" and "resolve `conversationId �
       retry). Optional `keyRetention` knob tightens the window. ADR in STATUS.md (2026-06-08). We do **not**
       hand-roll a parallel counter (standard #1).
 
-### 2. Key & group-state persistence — ✅ done (v0.2.0+), except eviction recovery
+### 2. Key & group-state persistence — ✅ done (v0.2.0+), incl. eviction recovery
 - [x] Define a small **persistence interface** (get/set opaque blobs by key) so web uses IndexedDB and
       RN/Expo can swap a keystore later. *(`SecureChatStore` + `MemoryStore` (core); `createIndexedDBStore` (react-js).)*
 - [x] Persist: device `privateState` + the stable `deviceId`; per-group state via
       `exportGroupState`/`importGroupState`; the handshake `lastSeq` cursor (task 4). *(`SecureChatRepository`.)*
 - [x] Implement the **`conversationId → GroupHandle`** resolver and feed it to `useSecureMessages`
       (and the post-`createGroup` save in `useSecureConversations`). *(provider-cached `resolveGroup`/`rememberGroup`.)*
-- [ ] Handle eviction gracefully (Safari ITP / "clear browsing data") — detect missing state and fall
-      back to backup-restore rather than crashing. *(unblocked — task 5's `useSecureBackup().restore()`
-      is the recovery primitive; the remaining work is the detect-missing-state → prompt-restore wiring.)*
+- [x] Handle eviction gracefully (Safari ITP / "clear browsing data") — detect missing state and fall
+      back to backup-restore rather than crashing. *(`useSecureBackup` exposes `needsRestore` /
+      `checkingRestore` / `recheckRestore()`: on mount, no local device + a server backup ⇒ the app
+      prompts for the passphrase and `restore()`s instead of registering a fresh identity. Evicted,
+      cleared, and new-browser are indistinguishable and resolve identically. Fails soft on network error.)*
 
 ### 3. KeyPackage replenishment loop
 - [ ] Publish a batch on registration (done) and **top up** on `secure:key-packages-low` (already wired

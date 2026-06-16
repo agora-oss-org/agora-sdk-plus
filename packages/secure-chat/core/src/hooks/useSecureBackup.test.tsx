@@ -32,8 +32,14 @@ function wrap(crypto: MockSecureChatCrypto, store: MemoryStore) {
   );
 }
 
+// The mount-time eviction check calls getKeyBackup when there's no local device; default it to "no
+// backup" so unrelated tests never hit the network. Eviction tests override it per-case.
+let getKeyBackupSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   vi.spyOn(SecureChatSocketClient.prototype, "on").mockReturnValue(() => {});
+  getKeyBackupSpy = vi
+    .spyOn(SecureChatRestClient.prototype, "getKeyBackup")
+    .mockResolvedValue(null);
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -167,5 +173,85 @@ describe("useSecureBackup", () => {
     const crypto = new MockSecureChatCrypto();
     const { result } = renderHook(() => useSecureBackup(), { wrapper: wrap(crypto, new MemoryStore()) });
     expect(result.current.estimateStrength("password").score).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("useSecureBackup — eviction recovery (needsRestore)", () => {
+  const dummyBackup = (): SecureKeyBackupModel => ({
+    id: "bk", projectId: "p", userId: "u", deviceId: null,
+    blob: "", nonce: "", kdf: "argon2id", kdfParams: {}, cipher: "xchacha20poly1305", version: 1,
+    createdAt: "", updatedAt: "",
+  });
+
+  it("flags needsRestore when local state is gone but a server backup exists (evicted / fresh browser)", async () => {
+    getKeyBackupSpy.mockResolvedValue(dummyBackup());
+    const { result } = renderHook(() => useSecureBackup(), { wrapper: wrap(new MockSecureChatCrypto(), new MemoryStore()) });
+    await waitFor(() => expect(result.current.needsRestore).toBe(true));
+    expect(result.current.checkingRestore).toBe(false);
+  });
+
+  it("does NOT flag needsRestore — or even hit the server — when a local device is present", async () => {
+    const crypto = new MockSecureChatCrypto();
+    await crypto.generateDeviceIdentity({ deviceId: "me" });
+    const store = new MemoryStore();
+    await new SecureChatRepository(store).saveDevice({
+      deviceId: "me", deviceState: await crypto.exportDeviceState(), device: row("row-1", "me"),
+    });
+
+    const { result } = renderHook(() => useSecureBackup(), { wrapper: wrap(crypto, store) });
+    await waitFor(() => expect(result.current.checkingRestore).toBe(false));
+    expect(result.current.needsRestore).toBe(false);
+    expect(getKeyBackupSpy).not.toHaveBeenCalled(); // common path stays a single IndexedDB read
+  });
+
+  it("does NOT flag needsRestore on a true first run (no local state, no backup)", async () => {
+    getKeyBackupSpy.mockResolvedValue(null);
+    const { result } = renderHook(() => useSecureBackup(), { wrapper: wrap(new MockSecureChatCrypto(), new MemoryStore()) });
+    await waitFor(() => expect(getKeyBackupSpy).toHaveBeenCalled());
+    expect(result.current.needsRestore).toBe(false);
+  });
+
+  it("fails soft when the backup check errors (no crash, surfaces error, needsRestore stays false)", async () => {
+    getKeyBackupSpy.mockRejectedValue(new Error("network down"));
+    const { result } = renderHook(() => useSecureBackup(), { wrapper: wrap(new MockSecureChatCrypto(), new MemoryStore()) });
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    expect(result.current.needsRestore).toBe(false);
+  });
+
+  it("recheckRestore() re-runs detection and returns the result", async () => {
+    getKeyBackupSpy.mockResolvedValue(null);
+    const { result } = renderHook(() => useSecureBackup(), { wrapper: wrap(new MockSecureChatCrypto(), new MemoryStore()) });
+    await waitFor(() => expect(result.current.checkingRestore).toBe(false));
+    expect(result.current.needsRestore).toBe(false);
+
+    getKeyBackupSpy.mockResolvedValue(dummyBackup()); // a backup appears (e.g. after sign-in)
+    let returned: boolean | undefined;
+    await act(async () => {
+      returned = await result.current.recheckRestore();
+    });
+    expect(returned).toBe(true);
+    expect(result.current.needsRestore).toBe(true);
+  });
+
+  it("clears needsRestore after a successful restore", async () => {
+    const a = new MockSecureChatCrypto();
+    await a.generateDeviceIdentity({ deviceId: "alice-dev" });
+    const b = await a.exportBackup("pw");
+    const model: SecureKeyBackupModel = {
+      id: "bk", projectId: "p", userId: "u", deviceId: null,
+      blob: toBase64(b.blob), nonce: toBase64(b.nonce),
+      kdf: b.kdf, kdfParams: b.kdfParams, cipher: b.cipher, version: b.version,
+      createdAt: "", updatedAt: "",
+    };
+    getKeyBackupSpy.mockResolvedValue(model);
+    vi.spyOn(SecureChatRestClient.prototype, "registerDevice").mockResolvedValue(row("row-1", "alice-dev"));
+    vi.spyOn(SecureChatRestClient.prototype, "listConversations").mockResolvedValue({ conversations: [], hasMore: false });
+
+    const { result } = renderHook(() => useSecureBackup(), { wrapper: wrap(new MockSecureChatCrypto(), new MemoryStore()) });
+    await waitFor(() => expect(result.current.needsRestore).toBe(true));
+    await act(async () => {
+      await result.current.restore("pw");
+    });
+    expect(result.current.needsRestore).toBe(false);
   });
 });
