@@ -4,7 +4,7 @@
   "private": false,
   "license": "Apache-2.0",
   "author": "Agora SDK Plus, maintained by Jenova Marie",
-  "description": "Expo bindings for the Agora social graph. Re-exports @agora-sdk/social-core hooks; native visual components land in a later phase. (Stub.)",
+  "description": "Expo components for the Agora social graph: CommunityWeather, Constellation, Neighborhood, SocialTransparency. Thin re-export of @agora-sdk/social-react-native (zero platform difference).",
   "keywords": [
     "agora",
     "social-graph",
@@ -39,12 +39,13 @@
     "dist"
   ],
   "dependencies": {
-    "@agora-sdk/social-core": "workspace:*"
+    "@agora-sdk/social-react-native": "workspace:*"
   },
   "peerDependencies": {
     "@agora-sdk/core": "^1.2.2",
     "expo": ">=50.0.0",
     "react": "^18.0.0 || ^19.0.0",
-    "react-native": ">=0.72.0"
+    "react-native": ">=0.72.0",
+    "react-native-svg": ">=13.0.0"
   }
 }
