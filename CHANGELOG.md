@@ -6,6 +6,8 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-06-16
+
 ### Added
 
 - **Social graph package group (`@agora-sdk/social-*`).** A new additive feature exposing Agora's
