@@ -6,6 +6,29 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- **Social graph package group (`@agora-sdk/social-*`).** A new additive feature exposing Agora's
+  community social graph (`docs/SOCIAL.md`) — the three member-facing lenses (Weather, Constellation,
+  Neighborhood) plus the Transparency endpoint — mirroring the `secure-chat` core+platform layout. No
+  crypto, persistence, or realtime: social data is public/server-side and slow-moving.
+  - `@agora-sdk/social-core` — typed `SocialRestClient` (throws a `SocialApiError` carrying HTTP
+    `status` + the server's machine `code`), a `SocialProvider` that auto-fetches `/social/transparency`
+    on mount and treats `503 social/graph-unavailable` as an all-disabled sentinel, and four
+    feature-gated hooks (`useSocialWeather`, `useSocialConstellation`, `useSocialNeighborhood` with an
+    `includeInteractions` toggle, `useSocialTransparency`).
+  - `@agora-sdk/social-react-js` — web components `<CommunityWeather />` (band + subtle trend cue),
+    `<Constellation />` (d3-force blob canvas, positions re-randomized every mount), `<Neighborhood />`
+    (brightness-as-glow tie list with a hopeful "sprout" state), and `<SocialTransparency />`, sharing a
+    single climate palette that enforces the privacy invariants (never render brightness numbers / exact
+    counts, warmth-only tints, no red for low warmth).
+  - `@agora-sdk/social-react-native` + `@agora-sdk/social-expo` — stubs re-exporting the core hooks;
+    native visual components land in a later phase.
+  - **Note (transitional):** no published `@agora-server/contract` version ships the social types yet, so
+    `social-core/src/contract/` holds a documented byte-faithful stand-in (authored from `docs/SOCIAL.md`)
+    until the contract publishes them — at which point it becomes a one-edit swap to a type-only
+    re-export, exactly as `secure-chat-core` once did.
+
 ## [0.5.0] — 2026-06-16
 
 ### Added

@@ -28,6 +28,9 @@ export default defineConfig({
         "packages/secure-chat/crypto/src/testing.ts"
       ),
       "@agora-sdk/secure-chat-crypto": fromHere("packages/secure-chat/crypto/src/index.ts"),
+      // Alias the social workspace package to its SOURCE so social-react-js component tests can import
+      // the public `@agora-sdk/social-core` entry (provider, hooks, transport, types) without a build.
+      "@agora-sdk/social-core": fromHere("packages/social/core/src/index.ts"),
       // Stub out @agora-sdk/core — its published ESM build uses extensionless relative imports that
       // Node's strict ESM resolver rejects, and its CJS build fails in an ESM context. The stub's
       // placeholder URLs are safe because resolution is lazy: getApiBaseUrl / getSocketUrl only run

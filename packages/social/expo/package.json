@@ -1,0 +1,50 @@
+{
+  "name": "@agora-sdk/social-expo",
+  "version": "0.5.0",
+  "private": false,
+  "license": "Apache-2.0",
+  "author": "Agora SDK Plus, maintained by Jenova Marie",
+  "description": "Expo bindings for the Agora social graph. Re-exports @agora-sdk/social-core hooks; native visual components land in a later phase. (Stub.)",
+  "keywords": [
+    "agora",
+    "social-graph",
+    "community",
+    "expo",
+    "react-native",
+    "typescript"
+  ],
+  "bugs": {
+    "url": "https://github.com/jenova-marie/agora-sdk-plus/issues"
+  },
+  "homepage": "https://github.com/jenova-marie/agora-sdk-plus",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jenova-marie/agora-sdk-plus.git",
+    "directory": "packages/social/expo"
+  },
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build:esm": "tsc -p tsconfig.esm.json",
+    "build:cjs": "tsc -p tsconfig.cjs.json && echo '{\"type\":\"commonjs\"}' > dist/cjs/package.json",
+    "build": "rimraf dist && pnpm run build:esm && pnpm run build:cjs",
+    "prepublish": "pnpm run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@agora-sdk/social-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "@agora-sdk/core": "^1.2.2",
+    "expo": ">=50.0.0",
+    "react": "^18.0.0 || ^19.0.0",
+    "react-native": ">=0.72.0"
+  }
+}

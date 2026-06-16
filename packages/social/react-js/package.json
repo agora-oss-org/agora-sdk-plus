@@ -1,0 +1,54 @@
+{
+  "name": "@agora-sdk/social-react-js",
+  "version": "0.5.0",
+  "private": false,
+  "license": "Apache-2.0",
+  "author": "Agora SDK Plus, maintained by Jenova Marie",
+  "description": "Web (browser) components for the Agora social graph: CommunityWeather, Constellation (d3-force), Neighborhood, SocialTransparency. Re-exports @agora-sdk/social-core.",
+  "keywords": [
+    "agora",
+    "social-graph",
+    "community",
+    "constellation",
+    "react",
+    "web",
+    "typescript"
+  ],
+  "bugs": {
+    "url": "https://github.com/jenova-marie/agora-sdk-plus/issues"
+  },
+  "homepage": "https://github.com/jenova-marie/agora-sdk-plus",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jenova-marie/agora-sdk-plus.git",
+    "directory": "packages/social/react-js"
+  },
+  "main": "dist/esm/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "type": "module",
+  "comment:esm-only": "ESM-only to match the secure-chat web binding: web/React consumers always bundle (Vite/webpack/Metro), and @agora-sdk/core is bundler-only, so a CJS build would never load at runtime.",
+  "scripts": {
+    "build:esm": "tsc -p tsconfig.esm.json",
+    "build": "rimraf dist && pnpm run build:esm",
+    "prepublish": "pnpm run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@agora-sdk/social-core": "workspace:*",
+    "d3-force": "^3.0.0"
+  },
+  "peerDependencies": {
+    "@agora-sdk/core": "^1.2.2",
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@types/d3-force": "^3.0.10"
+  }
+}
