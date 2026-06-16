@@ -11,9 +11,13 @@ All notable changes to Agora SDK Plus are documented here, following
 - **Passphrase backup / restore (Phase 2 task 5).** Real at-rest crypto for key-material backups: a
   new envelope codec in `@agora-sdk/secure-chat-crypto/ts-mls` (`backup.ts` — `sealBackup`/`openBackup`)
   using **argon2id** (RFC 9106 high-memory profile: m=64 MiB, t=3, p=1, 32-byte key) +
-  **xchacha20poly1305** (24-byte random nonce, 16-byte random salt), with the non-secret envelope
-  descriptors bound as AEAD associated data so a tampered `kdf`/`cipher`/`version`/`kdfParams` fails
-  closed. The ts-mls core's `exportBackup`/`importBackup` now implement this for real (previously
+  **xchacha20poly1305** (24-byte random nonce, 16-byte random salt), with the stable scalar envelope
+  descriptors (`version`/`kdf`/`cipher`) bound as AEAD associated data so a downgrade/tamper of any of
+  them fails closed. `kdfParams` is deliberately **not** in the AAD: the blind server stores it as
+  Postgres `jsonb`, which does not preserve object key order, so a `JSON.stringify(kdfParams)`-based
+  AAD would differ between seal and open and break a valid backup across a DB round-trip — the `salt`
+  is already bound implicitly (it's a KDF input) and the cost params are pinned on open. The ts-mls
+  core's `exportBackup`/`importBackup` now implement this for real (previously
   threw), sealing the device identity + every joined group's MLS state and restoring them on a fresh
   instance.
 - **`useSecureBackup` hook (`@agora-sdk/secure-chat-core`).** `backup(passphrase)` exports + uploads

@@ -226,6 +226,52 @@ describe.skipIf(!env)(`secure-chat foundation [${variant.name}] (real transport 
     expect(bytesToUtf8(decrypted.plaintext)).toBe(PLAINTEXT_2);
   });
 
+  it("restore-on-new-browser: bob backs up, a fresh client restores from the server blob and decrypts new history", async () => {
+    const passphrase = "correct horse battery staple";
+
+    // bob seals ALL local key material (identity + every group's state) and uploads the opaque blob.
+    const backup = await bobCrypto.exportBackup(passphrase);
+    await bobRest.uploadKeyBackup({
+      blob: toBase64(backup.blob),
+      nonce: toBase64(backup.nonce),
+      kdf: backup.kdf as "argon2id" | "pbkdf2",
+      kdfParams: backup.kdfParams,
+      cipher: backup.cipher as "xchacha20poly1305" | "aes-256-gcm",
+      version: backup.version,
+    });
+
+    const stored = await bobRest.getKeyBackup();
+    expect(stored, "the server should return bob's backup").toBeTruthy();
+    // server-blindness: the stored blob is opaque — it must not contain the passphrase in the clear.
+    expect(containsSubsequence(fromBase64(stored!.blob), utf8ToBytes(passphrase))).toBe(false);
+
+    // A brand-new client (evicted device / new browser) restores from the server backup ALONE.
+    const bob2 = variant.make();
+    await bob2.importBackup(passphrase, {
+      blob: fromBase64(stored!.blob),
+      nonce: fromBase64(stored!.nonce),
+      kdf: stored!.kdf,
+      kdfParams: stored!.kdfParams,
+      cipher: stored!.cipher,
+      version: stored!.version,
+    });
+
+    // alice sends fresh history; the restored bob decrypts it with the rehydrated group state.
+    const PLAINTEXT_3 = "hello restored bob — sent after the backup";
+    const { ciphertext, epoch } = await aliceCrypto.encryptMessage(aliceGroup, utf8ToBytes(PLAINTEXT_3));
+    const sent = await aliceRest.sendMessage(conversationId, {
+      ciphertext: toBase64(ciphertext),
+      epoch: epoch.toString(),
+      senderDeviceId: aliceRowId,
+    });
+
+    const page = await bobRest.listMessages(conversationId);
+    const restoredRow = page.messages.find((m) => m.id === sent.id);
+    expect(restoredRow, "the restored client should see the new message").toBeDefined();
+    const decrypted = await bob2.decryptMessage(bobGroupHandle(), fromBase64(restoredRow!.ciphertext));
+    expect(bytesToUtf8(decrypted.plaintext)).toBe(PLAINTEXT_3);
+  }, 30_000); // argon2id at the conservative profile is deliberately slow
+
   it("a fresh client catches up from the cursor without reprocessing (reload-survives)", async () => {
     // Drain bob's whole inbox once, recording the last seq processed.
     const full = await bobRest.fetchHandshakes(bobRowId);

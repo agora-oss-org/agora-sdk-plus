@@ -34,12 +34,18 @@ const NONCE_BYTES = 24; // xchacha20poly1305 extended nonce — safe with random
 export const ARGON2_PARAMS = { m: 65536, t: 3, p: 1, dkLen: 32 } as const;
 
 /**
- * The associated data bound into the AEAD: the non-secret envelope descriptors. Binding them means an
- * attacker can't swap the stored `kdf`/`cipher`/`version`/`kdfParams` (e.g. downgrade the KDF) without
- * the open failing closed.
+ * The associated data bound into the AEAD: the STABLE scalar envelope descriptors. Binding them means
+ * an attacker can't swap the stored `kdf`/`cipher`/`version` (e.g. downgrade the KDF) without the open
+ * failing closed.
+ *
+ * `kdfParams` is deliberately NOT bound here: the server stores it as Postgres jsonb, which does not
+ * preserve object key order, so a `JSON.stringify(kdfParams)`-based AAD would differ between seal and
+ * open and break a perfectly valid backup. It needs no AAD anyway — the `salt` is bound implicitly
+ * (it's a KDF input: any change yields the wrong key and the AEAD fails), and the cost params are
+ * pinned to {@link ARGON2_PARAMS} on open, so tampering them is inert.
  */
-function aad(kdf: string, cipher: string, version: number, kdfParams: Record<string, unknown>): Uint8Array {
-  return utf8(JSON.stringify({ v: version, kdf, cipher, kdfParams }));
+function aad(kdf: string, cipher: string, version: number): Uint8Array {
+  return utf8(JSON.stringify({ v: version, kdf, cipher }));
 }
 
 /**
@@ -66,7 +72,7 @@ export async function sealBackup(plaintext: Uint8Array, passphrase: string): Pro
   const kdfParams: Record<string, unknown> = { salt: toHex(salt), m: ARGON2_PARAMS.m, t: ARGON2_PARAMS.t, p: ARGON2_PARAMS.p };
   const key = await deriveKey(passphrase, salt);
   try {
-    const blob = xchacha20poly1305(key, nonce, aad(KDF, CIPHER, VERSION, kdfParams)).encrypt(plaintext);
+    const blob = xchacha20poly1305(key, nonce, aad(KDF, CIPHER, VERSION)).encrypt(plaintext);
     return { blob, kdf: KDF, kdfParams, cipher: CIPHER, nonce, version: VERSION };
   } finally {
     zeroOutUint8Array(key);
@@ -90,7 +96,7 @@ export async function openBackup(backup: PassphraseBackup, passphrase: string): 
   if (!saltHex) throw new Error("secure-chat: backup is missing its KDF salt");
   const key = await deriveKey(passphrase, fromHex(saltHex));
   try {
-    return xchacha20poly1305(key, backup.nonce, aad(backup.kdf, backup.cipher, backup.version, backup.kdfParams)).decrypt(backup.blob);
+    return xchacha20poly1305(key, backup.nonce, aad(backup.kdf, backup.cipher, backup.version)).decrypt(backup.blob);
   } catch {
     // Don't leak which check failed; a wrong passphrase and a tampered blob are indistinguishable here.
     throw new Error("secure-chat: backup decrypt failed (wrong passphrase or corrupt backup)");

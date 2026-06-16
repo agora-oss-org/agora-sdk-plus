@@ -54,10 +54,21 @@ describe("backup envelope codec (argon2id + xchacha20poly1305)", () => {
     await expect(openBackup(sealed, "pw")).rejects.toThrow();
   }, SLOW);
 
-  it("fails closed when bound metadata (kdfParams, as AAD) is tampered", async () => {
+  it("fails closed when the KDF salt is tampered (wrong derived key)", async () => {
     const sealed = await sealBackup(enc.encode("secret"), "pw");
-    (sealed.kdfParams as { t: number }).t += 1; // changes the AAD → AEAD rejects
+    const params = sealed.kdfParams as { salt: string };
+    // Flip the first hex nibble → a different salt → a different argon2id key → AEAD auth fails.
+    params.salt = (params.salt[0] === "0" ? "1" : "0") + params.salt.slice(1);
     await expect(openBackup(sealed, "pw")).rejects.toThrow();
+  }, SLOW);
+
+  it("survives a kdfParams key-order change (Postgres jsonb does not preserve order)", async () => {
+    const sealed = await sealBackup(enc.encode("secret"), "pw");
+    // Simulate the jsonb round-trip reordering object keys; the open must still succeed.
+    const p = sealed.kdfParams as Record<string, unknown>;
+    sealed.kdfParams = { m: p.m, p: p.p, t: p.t, salt: p.salt };
+    const opened = await openBackup(sealed, "pw");
+    expect(new TextDecoder().decode(opened)).toBe("secret");
   }, SLOW);
 
   it("fails closed on an unknown kdf or cipher (defense in depth)", async () => {
