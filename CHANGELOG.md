@@ -26,8 +26,15 @@ All notable changes to Agora SDK Plus are documented here, following
     (brightness-as-glow tie list with a hopeful "sprout" state), and `<SocialTransparency />`, sharing a
     single climate palette that enforces the privacy invariants (never render brightness numbers / exact
     counts, warmth-only tints, no red for low warmth).
-  - `@agora-sdk/social-react-native` + `@agora-sdk/social-expo` — stubs re-exporting the core hooks;
-    native visual components land in a later phase.
+  - `@agora-sdk/social-react-native` — native visual components (`<CommunityWeather />`,
+    `<Constellation />`, `<Neighborhood />`, `<SocialTransparency />`) built on React Native primitives
+    + `react-native-svg` (gradient orb + d3-force blob field) and the same `useSocial*` hooks. The
+    privacy-critical palette and brightness mapping are **ported** from the web sibling — identical §5
+    band colors and §6 thresholds (`isSprout` floor at `0.24`, layout re-randomized every mount,
+    warmth-only tints, brightness never rendered as a number), with `brightnessTreatment` returning RN
+    shadow/elevation props instead of CSS `box-shadow`. `react-native-svg` is a peer dependency.
+  - `@agora-sdk/social-expo` — thin re-export of `@agora-sdk/social-react-native` (the visual
+    components have zero Expo-vs-bare-RN difference), so an Expo app gets the same drop-in components.
   - Wire types come from `@agora-server/contract@^0.12.1` (which publishes the social surface):
     `social-core/src/contract/` is a thin **type-only re-export** (one source of truth, zero drift),
     mirroring `secure-chat-core`. The three runtime const arrays (`WEATHER_BANDS`, `BLOB_SIZE_BUCKETS`,

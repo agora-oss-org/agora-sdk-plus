@@ -360,33 +360,50 @@ exported from `@agora-sdk/social-core` if you need to iterate or validate.
 ```
 packages/social/core         @agora-sdk/social-core         REST client + provider + feature-gated hooks   ✅ shipped
 packages/social/react-js     @agora-sdk/social-react-js     web components + renderers (d3-force, palette)  ✅ shipped
-packages/social/react-native @agora-sdk/social-react-native re-exports core hooks                           ⏳ stub (see §10)
-packages/social/expo         @agora-sdk/social-expo         re-exports core hooks                           ⏳ stub (see §10)
+packages/social/react-native @agora-sdk/social-react-native native components (react-native-svg, d3-force) ✅ shipped
+packages/social/expo         @agora-sdk/social-expo         re-exports react-native (zero platform diff)   ✅ shipped
 ```
 
 - **`social-core`** owns the typed `SocialRestClient`, the `SocialProvider` (auto-fetches transparency),
   the four `useSocial*` hooks, and the `SocialApiError` / `isSocialDegradation` degradation surface.
   Platform-agnostic; no crypto, persistence, or realtime — social data is public/server-side.
 - **`social-react-js`** owns the web visual components and the shared climate palette.
-- **`social-react-native` / `social-expo`** currently re-export the core hooks, so the **data** works in
-  a native app today; the **native visual components** are the next phase (§10).
+- **`social-react-native`** owns the native visual components (the four lenses on RN primitives +
+  `react-native-svg`) plus a **ported** palette/layout — same §5 colors and §6 thresholds as the web
+  sibling, with `brightnessTreatment` returning RN shadow/elevation props. `react-native-svg` is a peer.
+- **`social-expo`** is a thin re-export of `social-react-native`: the visual components have zero
+  Expo-vs-bare-RN difference, so there's one implementation and no drift.
 
 ---
 
-## 10. Next phase — native visual components
+## 10. Native visual components (shipped)
 
-The React Native and Expo packages ship the core hooks today (data + feature-gating work natively), but
-not yet the native renderings of the four lenses. The next phase implements them so a native app gets
-the same drop-in components the web has:
+The React Native and Expo packages now ship the native renderings of all four lenses, so a native app
+gets the same drop-in components the web has — on top of the core hooks that already worked natively:
 
 - `<CommunityWeather />`, `<Constellation />`, `<Neighborhood />`, `<SocialTransparency />` for
-  React Native — built on RN primitives (`Animated` + `react-native-svg` for the blob field;
-  brightness-as-glow via shadow/elevation props), consuming the same `useSocial*` hooks.
-- The Expo package wires the same components against Expo's environment.
+  React Native, built on RN primitives + `react-native-svg` (a gradient orb for Weather, a d3-force
+  blob field for Constellation, brightness-as-glow via shadow/elevation props for Neighborhood),
+  consuming the same `useSocial*` hooks. `react-native-svg` is a **peer dependency** (the host app
+  installs the native module).
+- The Expo package re-exports `social-react-native` verbatim — the components have **zero**
+  Expo-vs-bare-RN difference (unlike secure-chat's real Keychain/SecureStore split), so there's one
+  implementation and no drift.
 
-Both must uphold the **identical** §6 privacy invariants and the §5 palette/brightness mapping (no
-brightness numbers, no exact counts, re-randomized blobs, warmth-only tints, sprout state). No server
-or `social-core` changes are expected — this is purely additive rendering on top of the existing hooks.
+The privacy-critical palette and layout are **ported** from the web sibling, not re-invented: the same
+§5 band colors and the same §6 thresholds (the `isSprout` floor at `0.24`, the `[0.15, 1.0]` clamp, the
+re-randomized layout, bucket-only sizing), with `brightnessTreatment` mapped onto RN shadow/elevation
+props instead of a CSS `box-shadow`. The two pure-logic modules (`palette.ts`, `layout.ts`) are
+RN-import-free so they unit-test under plain vitest, locking those invariants against drift. As planned,
+**no server or `social-core` changes** were needed — purely additive rendering on top of the hooks.
+
+### Native render note
+
+`react-native-svg` does not reliably support SVG blur filters (`feGaussianBlur`) across iOS/Android, so
+the native components get their soft "glow" from radial-gradient fades (Constellation blobs, the Weather
+orb) and RN view shadow/elevation (the Neighborhood tie halos) rather than the web's CSS/SVG blur. The
+visual vocabulary is identical; the mechanism is platform-appropriate. Full on-device render coverage is
+integration (Metro/simulator) and out of the unit suite; the privacy-critical cores are unit-tested.
 
 ---
 
