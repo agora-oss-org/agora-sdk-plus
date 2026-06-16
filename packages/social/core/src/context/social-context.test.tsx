@@ -7,11 +7,11 @@ import { SocialRestClient, SocialApiError } from "../transport/rest.js";
 import type { ResolvedSocialConfig } from "../contract/index.js";
 
 const CONFIG: ResolvedSocialConfig = {
+  ...ALL_DISABLED_SOCIAL_CONFIG,
   graphEnabled: true,
   weatherEnabled: true,
   neighborhoodEnabled: true,
   constellationEnabled: true,
-  neighborhoodIncludeInteractions: false,
   warmthHalfLifeDays: 30,
   frictionHalfLifeDays: 14,
   constellationKFloor: 5,

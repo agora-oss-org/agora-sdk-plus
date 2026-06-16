@@ -5,17 +5,15 @@ import { render, waitFor } from "@testing-library/react";
 import {
   SocialProvider,
   SocialRestClient,
+  ALL_DISABLED_SOCIAL_CONFIG,
   type ResolvedSocialConfig,
   type SocialConstellation,
 } from "@agora-sdk/social-core";
 import { Constellation } from "./Constellation.js";
 
 const config = (over: Partial<ResolvedSocialConfig>): ResolvedSocialConfig => ({
+  ...ALL_DISABLED_SOCIAL_CONFIG,
   graphEnabled: true,
-  weatherEnabled: false,
-  neighborhoodEnabled: false,
-  constellationEnabled: false,
-  neighborhoodIncludeInteractions: false,
   warmthHalfLifeDays: 30,
   frictionHalfLifeDays: 14,
   constellationKFloor: 5,

@@ -2,17 +2,14 @@
 import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
-import { SocialProvider, useSocial } from "../context/social-context.js";
+import { SocialProvider, useSocial, ALL_DISABLED_SOCIAL_CONFIG } from "../context/social-context.js";
 import { useSocialNeighborhood } from "./useSocialNeighborhood.js";
 import { SocialRestClient } from "../transport/rest.js";
 import type { ResolvedSocialConfig } from "../contract/index.js";
 
 const config = (over: Partial<ResolvedSocialConfig>): ResolvedSocialConfig => ({
+  ...ALL_DISABLED_SOCIAL_CONFIG,
   graphEnabled: true,
-  weatherEnabled: false,
-  neighborhoodEnabled: false,
-  constellationEnabled: false,
-  neighborhoodIncludeInteractions: false,
   warmthHalfLifeDays: 30,
   frictionHalfLifeDays: 14,
   constellationKFloor: 5,

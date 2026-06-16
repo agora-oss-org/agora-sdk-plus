@@ -31,3 +31,6 @@ lerna-debug.log*
 *.tsbuildinfo
 
 recycle_bin
+
+# Claude Code
+.superpowers/

@@ -5,16 +5,16 @@ import { render, waitFor } from "@testing-library/react";
 import {
   SocialProvider,
   SocialRestClient,
+  ALL_DISABLED_SOCIAL_CONFIG,
   type ResolvedSocialConfig,
 } from "@agora-sdk/social-core";
 import { SocialTransparency } from "./SocialTransparency.js";
 
 const CONFIG: ResolvedSocialConfig = {
+  ...ALL_DISABLED_SOCIAL_CONFIG,
   graphEnabled: true,
   weatherEnabled: true,
-  neighborhoodEnabled: false,
   constellationEnabled: true,
-  neighborhoodIncludeInteractions: false,
   warmthHalfLifeDays: 30,
   frictionHalfLifeDays: 14,
   constellationKFloor: 5,

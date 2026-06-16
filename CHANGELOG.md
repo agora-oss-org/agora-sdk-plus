@@ -24,10 +24,11 @@ All notable changes to Agora SDK Plus are documented here, following
     counts, warmth-only tints, no red for low warmth).
   - `@agora-sdk/social-react-native` + `@agora-sdk/social-expo` — stubs re-exporting the core hooks;
     native visual components land in a later phase.
-  - **Note (transitional):** no published `@agora-server/contract` version ships the social types yet, so
-    `social-core/src/contract/` holds a documented byte-faithful stand-in (authored from `docs/SOCIAL.md`)
-    until the contract publishes them — at which point it becomes a one-edit swap to a type-only
-    re-export, exactly as `secure-chat-core` once did.
+  - Wire types come from `@agora-server/contract@^0.12.1` (which publishes the social surface):
+    `social-core/src/contract/` is a thin **type-only re-export** (one source of truth, zero drift),
+    mirroring `secure-chat-core`. The three runtime const arrays (`WEATHER_BANDS`, `BLOB_SIZE_BUCKETS`,
+    `NEIGHBORHOOD_TIE_KINDS`) are re-declared locally and typed against the contract's unions, so core's
+    CJS build never `require()`s the ESM-only contract.
 
 ## [0.5.0] — 2026-06-16
 

@@ -20,18 +20,27 @@ import { ResolvedSocialConfig } from "../contract/index.js";
 
 /**
  * The resolved-config sentinel used when the social graph is unavailable (`503
- * social/graph-unavailable`) — every lens disabled, so hooks/components render nothing rather than
- * erroring. Numeric tuning fields are zeroed; they are never read while the lenses are disabled.
+ * social/graph-unavailable`) — every lens and analytics flag disabled, so hooks/components render
+ * nothing rather than erroring. Tier is the safe `"community"` default and numeric tuning fields are
+ * zeroed; none of these are read while the lenses are disabled.
  */
 export const ALL_DISABLED_SOCIAL_CONFIG: ResolvedSocialConfig = {
+  privacyTier: "community",
   graphEnabled: false,
   weatherEnabled: false,
-  neighborhoodEnabled: false,
   constellationEnabled: false,
+  constellationKFloor: 0,
+  neighborhoodEnabled: false,
   neighborhoodIncludeInteractions: false,
+  influenceScoresEnabled: false,
+  siloDetectionEnabled: false,
+  engagementScoresEnabled: false,
+  frictionVisibleToStewards: false,
+  frictionAnalyticsEnabled: false,
+  readAffinityEnabled: false,
+  readReceiptsAllowed: false,
   warmthHalfLifeDays: 0,
   frictionHalfLifeDays: 0,
-  constellationKFloor: 0,
 };
 
 /**

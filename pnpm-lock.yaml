@@ -153,14 +153,16 @@ importers:
         specifier: ^1.2.2
         version: 1.2.2(@reduxjs/toolkit@2.12.0(react-redux@9.3.0(@types/react@18.3.31)(react@18.3.1)(redux@5.0.1))(react@18.3.1))(react-redux@9.3.0(@types/react@18.3.31)(react@18.3.1)(redux@5.0.1))(react@18.3.1)
       '@agora-server/contract':
-        specifier: ^0.9.3
-        version: 0.9.3
+        specifier: ^0.12.1
+        version: 0.12.1
       axios:
         specifier: ^1.4.0
         version: 1.17.0
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 18.3.1
+
+  packages/social/core/dist/cjs: {}
 
   packages/social/expo:
     dependencies:
@@ -179,6 +181,8 @@ importers:
       react-native:
         specifier: '>=0.72.0'
         version: 0.79.7(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1)
+
+  packages/social/expo/dist/cjs: {}
 
   packages/social/react-js:
     dependencies:
@@ -217,6 +221,8 @@ importers:
         specifier: '>=0.72.0'
         version: 0.79.7(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1)
 
+  packages/social/react-native/dist/cjs: {}
+
 packages:
 
   '@agora-sdk/core@1.2.2':
@@ -225,6 +231,9 @@ packages:
       '@reduxjs/toolkit': ^2.0.0
       react: ^18.0.0 || ^19.0.0
       react-redux: ^9.0.0
+
+  '@agora-server/contract@0.12.1':
+    resolution: {integrity: sha512-UEbgXdE6NC4PIY2XdV6odVcL8vCvcZawgpv5qosTIG6R47vArmK/Ae+xPQS0UVALXlX2ujTbCfnqyNK3BNBq5Q==}
 
   '@agora-server/contract@0.9.3':
     resolution: {integrity: sha512-QKUZMrEdPtnmbR3Zq+tNuzYGs7j4buzIrBxR2PkAVkEZx/VMQ4RwE4EGctiQD7+MG45S8wQdVpH6D2V8bzUuog==}
@@ -3645,6 +3654,10 @@ snapshots:
       - debug
       - supports-color
       - utf-8-validate
+
+  '@agora-server/contract@0.12.1':
+    dependencies:
+      zod: 3.25.76
 
   '@agora-server/contract@0.9.3':
     dependencies:

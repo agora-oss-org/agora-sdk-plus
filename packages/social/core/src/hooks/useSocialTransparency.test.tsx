@@ -2,17 +2,16 @@
 import React from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
-import { SocialProvider } from "../context/social-context.js";
+import { SocialProvider, ALL_DISABLED_SOCIAL_CONFIG } from "../context/social-context.js";
 import { useSocialTransparency } from "./useSocialTransparency.js";
 import { SocialRestClient } from "../transport/rest.js";
 import type { ResolvedSocialConfig } from "../contract/index.js";
 
 const CONFIG: ResolvedSocialConfig = {
+  ...ALL_DISABLED_SOCIAL_CONFIG,
   graphEnabled: true,
   weatherEnabled: true,
-  neighborhoodEnabled: false,
   constellationEnabled: true,
-  neighborhoodIncludeInteractions: false,
   warmthHalfLifeDays: 30,
   frictionHalfLifeDays: 14,
   constellationKFloor: 5,
