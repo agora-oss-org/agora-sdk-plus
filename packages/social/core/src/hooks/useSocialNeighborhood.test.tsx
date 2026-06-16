@@ -4,7 +4,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { SocialProvider, useSocial, ALL_DISABLED_SOCIAL_CONFIG } from "../context/social-context.js";
 import { useSocialNeighborhood } from "./useSocialNeighborhood.js";
-import { SocialRestClient } from "../transport/rest.js";
+import { SocialRestClient, SocialApiError } from "../transport/rest.js";
 import type { ResolvedSocialConfig } from "../contract/index.js";
 
 const config = (over: Partial<ResolvedSocialConfig>): ResolvedSocialConfig => ({
@@ -78,5 +78,21 @@ describe("useSocialNeighborhood", () => {
     act(() => result.current.setIncludeInteractions(true));
     await waitFor(() => expect(result.current.includeInteractions).toBe(true));
     expect(get).toHaveBeenLastCalledWith({ includeInteractions: true });
+  });
+
+  it("fails soft on a degradation error (lens disabled mid-session): hides, no error", async () => {
+    vi.spyOn(SocialRestClient.prototype, "getTransparency").mockResolvedValue(
+      config({ neighborhoodEnabled: true })
+    );
+    vi.spyOn(SocialRestClient.prototype, "getNeighborhood").mockRejectedValue(
+      new SocialApiError("disabled", 400, "social/neighborhood-disabled")
+    );
+
+    const { result } = renderHook(() => useSocialNeighborhood(), { wrapper: wrap() });
+    await waitFor(() => expect(SocialRestClient.prototype.getNeighborhood).toHaveBeenCalled());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.neighborhood).toBeNull();
+    expect(result.current.error).toBeNull();
   });
 });

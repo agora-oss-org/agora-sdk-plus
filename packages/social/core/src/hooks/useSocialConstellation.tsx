@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { SocialConstellation } from "../contract/index.js";
+import { isSocialDegradation } from "../transport/rest.js";
 import { useSocial } from "../context/social-context.js";
 
 /** The state and actions returned by {@link useSocialConstellation}. */
@@ -52,7 +53,15 @@ export function useSocialConstellation(): UseSocialConstellationValues {
     try {
       setConstellation(await rest.getConstellation());
     } catch (err) {
-      setError(err);
+      // Fail soft on degradation (graph off, or the lens disabled mid-session): hide the surface —
+      // clear the snapshot and swallow the error rather than surface it to members (SOCIAL.md §7). Real
+      // errors still propagate via `error`.
+      if (isSocialDegradation(err)) {
+        setConstellation(null);
+        setError(null);
+      } else {
+        setError(err);
+      }
     } finally {
       setLoading(false);
     }

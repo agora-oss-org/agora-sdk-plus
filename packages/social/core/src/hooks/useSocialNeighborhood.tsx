@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SocialNeighborhood } from "../contract/index.js";
+import { isSocialDegradation } from "../transport/rest.js";
 import { useSocial } from "../context/social-context.js";
 
 /** The state and actions returned by {@link useSocialNeighborhood}. */
@@ -72,7 +73,15 @@ export function useSocialNeighborhood(): UseSocialNeighborhoodValues {
         // Sync to the server's effective value (it may override the request, e.g. project policy).
         setIncludeInteractions(result.includesInteractions);
       } catch (err) {
-        setError(err);
+        // Fail soft on degradation (graph off, or the lens disabled mid-session): hide the surface —
+        // clear ties and swallow the error rather than surface it to members (SOCIAL.md §7). Real
+        // errors still propagate via `error`.
+        if (isSocialDegradation(err)) {
+          setNeighborhood(null);
+          setError(null);
+        } else {
+          setError(err);
+        }
       } finally {
         setLoading(false);
       }

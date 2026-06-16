@@ -16,7 +16,11 @@ All notable changes to Agora SDK Plus are documented here, following
     `status` + the server's machine `code`), a `SocialProvider` that auto-fetches `/social/transparency`
     on mount and treats `503 social/graph-unavailable` as an all-disabled sentinel, and four
     feature-gated hooks (`useSocialWeather`, `useSocialConstellation`, `useSocialNeighborhood` with an
-    `includeInteractions` toggle, `useSocialTransparency`).
+    `includeInteractions` toggle, `useSocialTransparency`). The lens hooks **fail soft** on `SOCIAL.md`
+    §7 degradation: a `social/graph-unavailable` or `social/<surface>-disabled` error (classified by the
+    exported `isSocialDegradation(err)`) hides the surface — clears its data and is *not* surfaced via
+    `error` — so a lens toggled off or a graph dropped mid-session disappears rather than erroring at
+    members; real failures still propagate.
   - `@agora-sdk/social-react-js` — web components `<CommunityWeather />` (band + subtle trend cue),
     `<Constellation />` (d3-force blob canvas, positions re-randomized every mount), `<Neighborhood />`
     (brightness-as-glow tie list with a hopeful "sprout" state), and `<SocialTransparency />`, sharing a

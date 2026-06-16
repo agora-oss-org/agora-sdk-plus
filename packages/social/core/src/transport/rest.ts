@@ -57,6 +57,32 @@ export class SocialApiError extends Error {
 }
 
 /**
+ * Server error codes that mean "this surface is unavailable / turned off" rather than "something went
+ * wrong" — the graph being unconfigured (`503`) or a lens being feature-disabled (`400`). Per
+ * `docs/SOCIAL.md` §7 these should make the client **hide the surface**, never show a member an error.
+ */
+const SOCIAL_DEGRADATION_CODES: ReadonlySet<string> = new Set([
+  "social/graph-unavailable",
+  "social/weather-disabled",
+  "social/constellation-disabled",
+  "social/neighborhood-disabled",
+]);
+
+/**
+ * Whether an error is a "hide this surface" degradation (graph unavailable or a feature-disabled lens)
+ * rather than a real failure. Hooks use this to fail soft — clearing data instead of surfacing the
+ * error to members (`docs/SOCIAL.md` §7).
+ *
+ * @param err - Any caught error.
+ * @returns `true` for a {@link SocialApiError} whose `code` is a known degradation code; else `false`.
+ */
+export function isSocialDegradation(err: unknown): boolean {
+  return (
+    err instanceof SocialApiError && err.code !== null && SOCIAL_DEGRADATION_CODES.has(err.code)
+  );
+}
+
+/**
  * Pull the server's machine error code out of an arbitrary error body. agora-server error shapes vary
  * (`{ error: { code } }`, `{ code }`, or `{ error: "social/…" }`), so probe each defensively and fall
  * back to `null`. Never throws.

@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { SocialWeather } from "../contract/index.js";
+import { isSocialDegradation } from "../transport/rest.js";
 import { useSocial } from "../context/social-context.js";
 
 /** The state and actions returned by {@link useSocialWeather}. */
@@ -52,7 +53,15 @@ export function useSocialWeather(): UseSocialWeatherValues {
     try {
       setWeather(await rest.getWeather());
     } catch (err) {
-      setError(err);
+      // Fail soft on degradation (graph off, or the lens disabled mid-session): hide the surface —
+      // clear the reading and swallow the error rather than surface it to members (SOCIAL.md §7). Real
+      // errors still propagate via `error`.
+      if (isSocialDegradation(err)) {
+        setWeather(null);
+        setError(null);
+      } else {
+        setError(err);
+      }
     } finally {
       setLoading(false);
     }

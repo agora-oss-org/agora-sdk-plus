@@ -19,7 +19,7 @@ export { useSocialTransparency } from "./hooks/useSocialTransparency.js";
 export type { UseSocialTransparencyValues } from "./hooks/useSocialTransparency.js";
 
 // ── transport (for advanced / non-React use) ─────────────────────────────────
-export { SocialRestClient, SocialApiError } from "./transport/rest.js";
+export { SocialRestClient, SocialApiError, isSocialDegradation } from "./transport/rest.js";
 export type { SocialRestConfig } from "./transport/rest.js";
 
 // ── wire contract types + runtime const arrays (transitional — see ./contract) ──

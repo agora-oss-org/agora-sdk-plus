@@ -4,7 +4,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { SocialProvider, useSocial, ALL_DISABLED_SOCIAL_CONFIG } from "../context/social-context.js";
 import { useSocialConstellation } from "./useSocialConstellation.js";
-import { SocialRestClient } from "../transport/rest.js";
+import { SocialRestClient, SocialApiError } from "../transport/rest.js";
 import type { ResolvedSocialConfig, SocialConstellation } from "../contract/index.js";
 
 const config = (over: Partial<ResolvedSocialConfig>): ResolvedSocialConfig => ({
@@ -73,6 +73,22 @@ describe("useSocialConstellation", () => {
     const { result } = renderHook(() => useSocialConstellation(), { wrapper: wrap() });
     await waitFor(() => expect(result.current.constellation).not.toBeNull());
     expect(result.current.constellation?.asOf).toBeNull();
+    expect(result.current.error).toBeNull();
+  });
+
+  it("fails soft on a degradation error (graph unavailable mid-session): hides, no error", async () => {
+    vi.spyOn(SocialRestClient.prototype, "getTransparency").mockResolvedValue(
+      config({ constellationEnabled: true })
+    );
+    vi.spyOn(SocialRestClient.prototype, "getConstellation").mockRejectedValue(
+      new SocialApiError("graph off", 503, "social/graph-unavailable")
+    );
+
+    const { result } = renderHook(() => useSocialConstellation(), { wrapper: wrap() });
+    await waitFor(() => expect(SocialRestClient.prototype.getConstellation).toHaveBeenCalled());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.constellation).toBeNull();
     expect(result.current.error).toBeNull();
   });
 });

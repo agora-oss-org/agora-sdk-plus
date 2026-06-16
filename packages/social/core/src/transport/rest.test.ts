@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { AxiosError, type AxiosInstance } from "axios";
-import { SocialRestClient, SocialApiError } from "./rest.js";
+import { SocialRestClient, SocialApiError, isSocialDegradation } from "./rest.js";
 
 /** Reach the client's private axios instance to stub `.get` at the boundary (no real network). */
 function httpOf(client: SocialRestClient): AxiosInstance {
@@ -71,5 +71,21 @@ describe("SocialRestClient", () => {
 
     await client.getNeighborhood();
     expect(get).toHaveBeenLastCalledWith("/neighborhood", undefined);
+  });
+});
+
+describe("isSocialDegradation", () => {
+  it("is true for graph-unavailable and any feature-disabled code", () => {
+    expect(isSocialDegradation(new SocialApiError("x", 503, "social/graph-unavailable"))).toBe(true);
+    expect(isSocialDegradation(new SocialApiError("x", 400, "social/weather-disabled"))).toBe(true);
+    expect(isSocialDegradation(new SocialApiError("x", 400, "social/constellation-disabled"))).toBe(true);
+    expect(isSocialDegradation(new SocialApiError("x", 400, "social/neighborhood-disabled"))).toBe(true);
+  });
+
+  it("is false for real failures, unknown codes, and non-SocialApiError errors", () => {
+    expect(isSocialDegradation(new SocialApiError("x", 500, null))).toBe(false);
+    expect(isSocialDegradation(new SocialApiError("x", 401, "auth/unauthorized"))).toBe(false);
+    expect(isSocialDegradation(new Error("boom"))).toBe(false);
+    expect(isSocialDegradation(null)).toBe(false);
   });
 });
