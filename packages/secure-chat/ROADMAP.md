@@ -10,8 +10,9 @@ current state + cross-repo notes are in [STATUS.md](../../STATUS.md).
 and now **passphrase backup/restore** (real argon2id+AEAD core + `useSecureBackup` + strength meter)
 are all done. The Phase-2 Definition of Done is met in code; the one remaining proof is the
 **restore-on-new-browser e2e leg** (needs a running agora-server). **Remaining Phase 2 = hardening:**
-KeyPackage-replenishment tuning, 409 epoch-conflict rebase, optional metadata hardening, and the demo
-screen. (Generation-counter enforcement — done, task 1.3; eviction recovery — done, task 2.4.)
+409 epoch-conflict rebase, optional metadata hardening, and the demo screen. (Generation-counter
+enforcement — done, task 1.3; eviction recovery — done, task 2.4; KeyPackage-replenishment tuning —
+done, task 3.)
 
 The cardinal rule (see STATUS.md): **crypto lives here; the wire contract lives in agora-server's
 `@agora-server/contract`; the SDK depends on the contract, never the reverse.**
@@ -26,7 +27,7 @@ The structure is in place — Phase 2 is mostly *filling defined seams*, not new
 |---|---|---|
 | Real `SecureChatCrypto` | `crypto/src/ts-mls/` (`@agora-sdk/secure-chat-crypto/ts-mls`) | ✅ **done** — real ts-mls core on the opt-in ESM-only subpath; mock stays on `./testing`. |
 | Web crypto + persistence wiring | `react-js/src/crypto-web.ts` | ✅ `createWebSecureChatCrypto()` returns the real ts-mls core; group state persists via the IndexedDB store. |
-| Device registration + KeyPackages | `core/src/hooks/useSecureDevice.tsx` | ✅ transport + auto-replenish + `privateState`/stable `deviceId` persistence done (low-water *threshold tuning* remains — task 3). |
+| Device registration + KeyPackages | `core/src/hooks/useSecureDevice.tsx` | ✅ transport + auto-replenish (deficit top-up + configurable low-water + proactive/manual check, task 3) + `privateState`/stable `deviceId` persistence — done. |
 | DM creation (claim→createGroup→relay) | `core/src/hooks/useSecureConversations.tsx` | ✅ done — group state persists after `createGroup` (`rememberGroup`). |
 | Send/receive + decrypt | `core/src/hooks/useSecureMessages.tsx` | ✅ done — cached `conversationId → GroupHandle` resolver wired; re-decrypts buffered rows when the epoch advances. |
 | REST + `/secure` socket | `core/src/transport/*` | complete. |
@@ -68,9 +69,14 @@ Both recurring gaps — "persist `privateState`" and "resolve `conversationId �
       prompts for the passphrase and `restore()`s instead of registering a fresh identity. Evicted,
       cleared, and new-browser are indistinguishable and resolve identically. Fails soft on network error.)*
 
-### 3. KeyPackage replenishment loop
-- [ ] Publish a batch on registration (done) and **top up** on `secure:key-packages-low` (already wired
-      in `useSecureDevice`) and proactively via `GET /key-packages/count`. Tune the low-water threshold.
+### 3. KeyPackage replenishment loop — ✅ done
+- [x] Publish a batch on registration (done) and **top up** on `secure:key-packages-low` (wired in
+      `useSecureDevice`) and proactively via `GET /key-packages/count`. The server signal and the
+      proactive/manual paths now **top up to `keyPackageTarget` by the deficit** (from the actual
+      `available` count) rather than a blind full batch. Configurable low-water threshold
+      (`keyPackageLowWater`, default 50% of target); a one-shot proactive check on device-ready
+      (self-heals after a missed signal); and an app-callable `checkAndReplenish()` for
+      window-focus / foreground re-checks. No server changes.
 
 ### 4. Handshake processing + ordering
 - [x] On connect: `GET /devices/:id/handshakes?since=<lastSeq>`, then live via `secure:welcome` /

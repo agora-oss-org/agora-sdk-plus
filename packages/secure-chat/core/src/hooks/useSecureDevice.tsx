@@ -3,7 +3,14 @@
 //
 // On mount it re-hydrates a persisted device (stable deviceId + private state via
 // crypto.importDeviceState) so a reload does NOT mint a new identity. register() generates, registers
-// on the server, and persists. Replenishes on the `secure:key-packages-low` realtime signal.
+// on the server, and persists.
+//
+// KeyPackages are single-use (the server consumes one per group-add), so running dry means peers can't
+// add this device. The hook keeps the stock topped up to `keyPackageTarget` from three triggers: the
+// server's `secure:key-packages-low` realtime signal, a one-shot proactive count check once the device
+// is ready (self-heals a client that missed the signal while offline), and an app-callable
+// `checkAndReplenish()` (e.g. on window focus). Each top-up publishes only the DEFICIT to the target
+// (using the actual available count), not a blind full batch.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SecureDeviceModel } from "../contract/index.js";
@@ -31,7 +38,20 @@ export interface UseSecureDeviceOptions {
   ciphersuite?: number;
   /** How many KeyPackages to publish on registration and replenish toward. Default 20. */
   keyPackageTarget?: number;
-  /** Auto-replenish when `secure:key-packages-low` fires. Default true. */
+  /**
+   * Low-water mark: when the server's available count drops **below** this, a top-up refills to
+   * {@link UseSecureDeviceOptions.keyPackageTarget}. KeyPackages are single-use, so this guards
+   * against exhaustion (peers unable to add this device). Default `ceil(keyPackageTarget / 2)` (10 for
+   * the default target of 20). Only governs the proactive/manual path — the server's
+   * `secure:key-packages-low` signal always tops up, since the server already judged the stock low.
+   */
+  keyPackageLowWater?: number;
+  /**
+   * Auto-replenish without app involvement. Default true. When true the hook subscribes to
+   * `secure:key-packages-low` and runs a one-shot proactive count check once the device is ready. When
+   * false, both automatic paths are disabled but {@link UseSecureDeviceValues.checkAndReplenish}
+   * still works on demand.
+   */
   autoReplenish?: boolean;
 }
 
@@ -53,6 +73,13 @@ export interface UseSecureDeviceValues {
   publishKeyPackages: (count?: number) => Promise<number>;
   /** Re-query the server for the available KeyPackage count and update `keyPackagesAvailable`. */
   refreshKeyPackageCount: () => Promise<number>;
+  /**
+   * Refresh the server count and, if it's below the low-water mark, top up to `keyPackageTarget`
+   * (publishing only the deficit). Safe to call before {@link UseSecureDeviceValues.register} — it
+   * no-ops to 0 when there's no device and never throws for that case — so an app can wire it to a
+   * window-focus / app-foreground handler.
+   */
+  checkAndReplenish: () => Promise<number>;
 }
 
 /**
@@ -73,6 +100,7 @@ export interface UseSecureDeviceValues {
 export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecureDeviceValues {
   const { crypto, rest, socket, repo } = useSecureChat();
   const { ciphersuite, keyPackageTarget = 20, autoReplenish = true } = options;
+  const keyPackageLowWater = options.keyPackageLowWater ?? Math.ceil(keyPackageTarget / 2);
 
   const [device, setDevice] = useState<SecureDeviceModel | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,6 +110,8 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
 
   const deviceIdRef = useRef<string>(options.deviceId ?? newDeviceId());
   const registerStartedRef = useRef(false);
+  // Guards the one-shot proactive count check so it runs once per device-ready, not on every render.
+  const proactiveCheckedRef = useRef(false);
 
   // On mount: re-hydrate a persisted device (stable id + private state). No persisted device ⇒
   // first-run; the app calls register().
@@ -138,6 +168,27 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
     return available;
   }, [rest, device]);
 
+  // Publish only the shortfall (target − available) to refill to the target; nothing if already
+  // at/above it. Optimistically bumps the local count so the UI reflects the refill without a re-query.
+  // Callers guarantee `device` exists (publishKeyPackages throws otherwise).
+  const replenishToTarget = useCallback(
+    async (available: number): Promise<number> => {
+      const deficit = keyPackageTarget - available;
+      if (deficit <= 0) return 0;
+      const published = await publishKeyPackages(deficit);
+      setKeyPackagesAvailable(available + published);
+      return published;
+    },
+    [keyPackageTarget, publishKeyPackages]
+  );
+
+  const checkAndReplenish = useCallback(async (): Promise<number> => {
+    if (!device) return 0; // not registered yet — no-op (app may call this eagerly on focus)
+    const available = await refreshKeyPackageCount();
+    if (available >= keyPackageLowWater) return 0;
+    return replenishToTarget(available);
+  }, [device, refreshKeyPackageCount, keyPackageLowWater, replenishToTarget]);
+
   const register = useCallback(async (): Promise<SecureDeviceModel> => {
     registerStartedRef.current = true;
     setRegistering(true);
@@ -166,15 +217,26 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
     }
   }, [crypto, rest, repo, ciphersuite]);
 
-  // Auto-replenish on the server's low-water signal for this device.
+  // Auto-replenish on the server's low-water signal for this device. We top up to the target using the
+  // count the signal reports (not a blind full batch), and trust the server's "low" verdict — the
+  // client `keyPackageLowWater` only gates the proactive path below.
   useEffect(() => {
     if (!autoReplenish || !device) return;
     const off = socket.on("secure:key-packages-low", (signal) => {
-      if (signal.deviceId !== device.id) return;
-      publishKeyPackages().catch(setError);
+      if (signal.deviceId !== device.id) return; // device.id is the server ROW id, not the deviceId
+      setKeyPackagesAvailable(signal.available);
+      replenishToTarget(signal.available).catch(setError);
     });
     return off;
-  }, [autoReplenish, device, socket, publishKeyPackages]);
+  }, [autoReplenish, device, socket, replenishToTarget]);
+
+  // One-shot proactive top-up once the device is ready (covers both register and rehydrate-on-mount),
+  // so a client that missed the realtime signal while offline self-heals on next load.
+  useEffect(() => {
+    if (!autoReplenish || !device || proactiveCheckedRef.current) return;
+    proactiveCheckedRef.current = true;
+    checkAndReplenish().catch(setError);
+  }, [autoReplenish, device, checkAndReplenish]);
 
   return {
     device,
@@ -185,5 +247,6 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
     register,
     publishKeyPackages,
     refreshKeyPackageCount,
+    checkAndReplenish,
   };
 }

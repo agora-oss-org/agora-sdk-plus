@@ -8,6 +8,16 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Added
 
+- **KeyPackage replenishment tuning (Phase 2 task 3).** `useSecureDevice` now keeps the single-use
+  KeyPackage stock topped up smarter and from more triggers. New configurable `keyPackageLowWater`
+  option (default `ceil(keyPackageTarget / 2)`, i.e. 10 for the default target of 20): when the server
+  count drops below it, the client tops up **to the target by publishing only the deficit** (using the
+  actual `available` count) instead of the old blind full-batch publish on every `secure:key-packages-low`
+  signal. Replenishment now also runs **proactively** — a one-shot count check once the device is ready
+  (self-heals a client that missed the realtime signal while offline) — and on demand via a new
+  `checkAndReplenish()` (safe to call before `register()`; no-ops to 0) so an app can wire it to
+  window-focus / app-foreground. No server changes.
+
 - **Passphrase backup / restore (Phase 2 task 5).** Real at-rest crypto for key-material backups: a
   new envelope codec in `@agora-sdk/secure-chat-crypto/ts-mls` (`backup.ts` — `sealBackup`/`openBackup`)
   using **argon2id** (RFC 9106 high-memory profile: m=64 MiB, t=3, p=1, 32-byte key) +
