@@ -8,11 +8,11 @@ current state + cross-repo notes are in [STATUS.md](../../STATUS.md).
 **Where we are:** Server Phase 1 (the blind MLS Delivery Service) is shipped. The SDK's transport,
 **persistence**, React layer, handshake processing, the **real ts-mls MLS core** (released **v0.4.0**),
 and now **passphrase backup/restore** (real argon2id+AEAD core + `useSecureBackup` + strength meter)
-are all done. The Phase-2 Definition of Done is met in code; the one remaining proof is the
-**restore-on-new-browser e2e leg** (needs a running agora-server). **Remaining Phase 2 = hardening:**
-409 epoch-conflict rebase and the demo screen. (Generation-counter enforcement — done, task 1.3;
+are all done, including the **restore-on-new-browser e2e leg** and the tests + demo (task 7). The
+Phase-2 Definition of Done is met. **The one remaining Phase-2 item is hardening:** the
+409 epoch-conflict rebase on membership commits. (Generation-counter enforcement — done, task 1.3;
 eviction recovery — done, task 2.4; KeyPackage-replenishment tuning — done, task 3; metadata hardening
-— size-bucket padding + safety number — done, task 6.)
+— size-bucket padding + safety number — done, task 6; tests + demo — done, task 7.)
 
 The cardinal rule (see STATUS.md): **crypto lives here; the wire contract lives in agora-server's
 `@agora-server/contract`; the SDK depends on the contract, never the reverse.**
@@ -97,9 +97,9 @@ Both recurring gaps — "persist `privateState`" and "resolve `conversationId �
       `GET /key-backup` → `importBackup` → idempotent device re-assert → persist device → rebind each
       conversation's group state from the server conversation list. Plus `needsBackup` stale signal +
       `estimatePassphraseStrength` meter.
-- [ ] **Deferred (needs a running agora-server):** the restore-on-new-browser **e2e** leg in
-      `e2e/secure-chat.e2e.ts` (alice backs up → a second client with an empty store restores via
-      passphrase → decrypts history). Tracked under task 7.
+- [x] The restore-on-new-browser **e2e** leg in `e2e/secure-chat.e2e.ts` (alice backs up → a second
+      client with an empty store restores via passphrase → decrypts history). Opt-in (`pnpm test:e2e`,
+      needs a running agora-server), runs per crypto variant.
 
 ### 6. Metadata hardening — ✅ done *(was optional, Phase 2+)*
 - [x] Client-side ciphertext **size-bucket padding** (blunts traffic-shape fingerprinting; pairs with
@@ -116,10 +116,9 @@ Both recurring gaps — "persist `privateState`" and "resolve `conversationId �
 - [x] An e2e against a **running agora-server** proving, from the client side, the round-trip
       (register → DM → send → receive → reload-survives → restore-on-new-browser) and that the server
       only ever stored ciphertext. Consider wiring a secure-chat screen into `agora-demo`.
-      *(`e2e/secure-chat.e2e.ts` — opt-in `pnpm test:e2e`, real transport + MockSecureChatCrypto + two
-      devices; covers register→DM→send→receive→realtime→reload + server-blindness. **TODO (needs the
-      server up):** add the restore-on-new-browser leg now that task 5's backup/restore exists; the
-      demo screen is still TODO.)*
+      *(`e2e/secure-chat.e2e.ts` — opt-in `pnpm test:e2e`, real transport + both crypto variants
+      (mock + ts-mls) + two devices; covers register→DM→send→receive→realtime→reload→
+      restore-on-new-browser + server-blindness. The `agora-demo` secure-chat screen is wired.)*
 
 ---
 

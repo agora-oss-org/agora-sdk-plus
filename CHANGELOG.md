@@ -6,6 +6,8 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-06-16
+
 ### Added
 
 - **Ciphertext size-bucket padding (Phase 2 task 6a).** Outbound message plaintext is now wrapped in a
@@ -93,8 +95,7 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Not yet implemented
 
-- KeyPackage replenishment loop tuning; restore-on-new-browser e2e (needs a running agora-server);
-  metadata padding; 409 epoch-conflict rebase on membership commits (the `resync()` seam is in place);
+- 409 epoch-conflict rebase on membership commits (the `resync()` seam is in place);
   `removeMember`/membership churn + multi-device + native (Phase 3).
 
 ## [0.4.0] — 2026-06-08
