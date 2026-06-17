@@ -6,6 +6,8 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+## [0.6.4] — 2026-06-17
+
 ### Fixed
 
 - **Stale handshake cursor masked a re-registered device's own Welcome (recipient never joined).** The
@@ -37,6 +39,10 @@ All notable changes to Agora SDK Plus are documented here, following
   a transient probe error keeps the identity for offline tolerance). `register()` also gains an
   idempotency guard: if a usable persisted device exists, it re-imports and adopts instead of minting a
   new identity, so repeated calls yield one device, not one per call.
+
+## [0.6.3] — 2026-06-17
+
+### Fixed
 
 - **`/secure` socket connected to the wrong namespace — realtime never worked.** `SecureChatSocketClient.connect()`
   built the socket URL from `getSocketUrl()` (the REST base, e.g. `http://host/v7`) and only stripped a
