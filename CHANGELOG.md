@@ -8,6 +8,15 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Added
 
+- **Unit tests for the `SecureChatRestClient` transport (`transport/rest.test.ts`).** Closes the
+  largest coverage gap — the wire boundary to the blind Delivery Service previously had zero unit
+  tests. 27 cases cover all 17 endpoints (method + path with `encodeURIComponent` on ids, the query
+  params / request body emitted, and how each response shape is unwrapped), the cross-cutting
+  interceptor behaviour (lazy `{base}/{projectId}/secure-chat` composition + trailing-slash strip,
+  lazy `Bearer` token resolved per request so a refresh takes effect, header omitted when signed out),
+  and the error contracts callers depend on (`getKeyBackup` → `null` on 404 but re-throws a 500;
+  `claimKeyPackage` / `removeMember` propagate `409`). The client's real request/response interceptors
+  run against an injected axios adapter, so the test exercises actual wiring rather than a stub.
 - **Dev-only trace/debug logging for the secure-chat sync internals.** A tiny, dependency-free logger
   (`packages/secure-chat/core/src/util/debug.ts`) that is **off by default** and short-circuits on a
   single boolean when disabled, so a shipped build logs nothing and pays nothing. Toggle it at runtime
