@@ -6,6 +6,8 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-06-17
+
 ### Added
 
 - **Unit tests for the `SecureChatRestClient` transport (`transport/rest.test.ts`).** Closes the
@@ -30,6 +32,12 @@ All notable changes to Agora SDK Plus are documented here, following
   cursor advance), `useSecureMessages` (page load, decrypt outcome, send, live de-dup), and
   `useSecureDevice` (register, re-hydrate, KeyPackage replenishment) hooks. Unit-tested for the
   silent-by-default contract and faithful raw output when on.
+
+### Changed
+
+- The "throws when used outside the provider" negative tests (secure-chat + social contexts) now
+  swallow React's expected error-boundary `console.error` with a scoped, restored spy, so a passing
+  `pnpm test` no longer prints an alarming error block for an assertion that is working as intended.
 
 ## [0.6.0] — 2026-06-16
 
