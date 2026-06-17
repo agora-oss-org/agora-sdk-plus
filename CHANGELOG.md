@@ -6,6 +6,20 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+## [0.6.5] — 2026-06-17
+
+### Fixed
+
+- **A sent message could duplicate (React duplicate-key) and flash as `rejected` in `useSecureMessages`.**
+  The server stores a sent message once and echoes that same row back over `secure:message`; because a
+  sender cannot decrypt their own MLS application message, the echo decrypts as `rejected`. The
+  live-receive path dedups by id, but the **optimistic-send add did not** — so when the echo won the race
+  against the HTTP send response (common on localhost), the rejected echo was added first and the
+  optimistic `ok` copy was then prepended as a *second* row with the same id (two children with the same
+  React `key`). The optimistic add now dedups by id while prepending (drops any prior echo, keeps the
+  authoritative `ok` copy), so the list holds exactly one row per id in **both** orderings and the user
+  never sees their own message as `rejected`. Regression test reproduces the echo-first race.
+
 ## [0.6.4] — 2026-06-17
 
 ### Fixed

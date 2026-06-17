@@ -228,6 +228,65 @@ describe("useSecureMessages — generation-counter rejection (fail closed)", () 
   });
 });
 
+describe("useSecureMessages — own-message echo de-dup", () => {
+  const enc = (s: string) => new TextEncoder().encode(s);
+
+  async function seed() {
+    const crypto = new MockSecureChatCrypto();
+    await crypto.generateDeviceIdentity({ deviceId: "me" });
+    const { group } = await crypto.createGroup({ initialMembers: [] });
+    const store = new MemoryStore();
+    const repo = new SecureChatRepository(store);
+    await repo.saveGroupState("conv-1", await crypto.exportGroupState(group));
+    await repo.saveDevice({ deviceId: "me", deviceState: await crypto.exportDeviceState(), device: row });
+    return { crypto, store };
+  }
+
+  // The server stores a sent message once and echoes that SAME row back over `secure:message` — and a
+  // sender can't decrypt their own MLS application message, so the echo decrypts as `rejected`. When the
+  // echo wins the race against the HTTP send response (common on localhost), the rejected echo is added
+  // first; the optimistic add must NOT then prepend a second copy of the same id (React duplicate-key).
+  it("does not duplicate a sent message when its own live echo arrives first", async () => {
+    const { crypto, store } = await seed();
+    vi.spyOn(crypto, "decryptMessage").mockRejectedValue(
+      new SecureChatDecryptError("unauthenticated", "cannot decrypt own message")
+    );
+
+    // Capture the live secure:message handler so we can deliver the server's echo on demand.
+    let onMessage: ((m: SecureMessageModel) => void) | undefined;
+    vi.spyOn(SecureChatSocketClient.prototype, "on").mockImplementation((event, handler) => {
+      if (event === "secure:message") onMessage = handler as (m: SecureMessageModel) => void;
+      return () => {};
+    });
+
+    const stored: SecureMessageModel = {
+      id: "m1", projectId: "p", conversationId: "conv-1", senderUserId: "u", senderDeviceId: "row-1",
+      epoch: "0", ciphertext: toBase64(enc("ct")), contentType: "text/plain", createdAt: "",
+    };
+    vi.spyOn(SecureChatRestClient.prototype, "sendMessage").mockResolvedValue(stored);
+
+    const { result } = renderHook(() => useSecureMessages("conv-1"), { wrapper: wrap(crypto, store) });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // 1) The live echo of our own message lands FIRST and decrypts to `rejected`.
+    await act(async () => {
+      onMessage!(stored);
+    });
+    await waitFor(() => expect(result.current.messages.some((m) => m.model.id === "m1")).toBe(true));
+
+    // 2) Then our optimistic send completes for the SAME id.
+    await waitFor(async () => {
+      await result.current.sendMessage("hi");
+    });
+
+    // Exactly ONE row for that id — and it must be our authoritative "ok" copy, not the rejected echo.
+    const matches = result.current.messages.filter((m) => m.model.id === "m1");
+    expect(matches).toHaveLength(1);
+    expect(matches[0].status).toBe("ok");
+    expect(matches[0].plaintext).toBe("hi");
+  });
+});
+
 describe("useSecureMessages — size-bucket padding (task 6a)", () => {
   const enc = (s: string) => new TextEncoder().encode(s);
 

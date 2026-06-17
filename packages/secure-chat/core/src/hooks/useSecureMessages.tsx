@@ -277,8 +277,16 @@ export function useSecureMessages(
         epoch: epoch.toString(),
         senderDeviceId,
       });
-      // Optimistic: we know our own plaintext without a round-trip through decrypt.
-      setMessages((prev) => [{ model: sent, plaintext: text, status: "ok" }, ...prev]);
+      // Optimistic: we know our own plaintext without a round-trip through decrypt. Dedup by id while
+      // prepending: the server echoes this same row back over `secure:message`, and a sender can't
+      // decrypt their own MLS message, so that echo decrypts as `rejected`. If the echo wins the race
+      // against this HTTP response it's already in `prev` — drop it and keep this authoritative `ok`
+      // copy, so the list never holds two rows with the same id (React duplicate-key) and the user
+      // never sees their own message as `rejected`. (The live-receive path dedups the other ordering.)
+      setMessages((prev) => [
+        { model: sent, plaintext: text, status: "ok" },
+        ...prev.filter((p) => p.model.id !== sent.id),
+      ]);
     },
     [crypto, rest, conversationId, group, senderDeviceId, padding]
   );
