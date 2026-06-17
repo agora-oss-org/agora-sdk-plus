@@ -70,7 +70,12 @@ export class SecureChatSocketClient {
    */
   connect(): SecureSocket {
     if (this.socket?.connected) return this.socket;
-    const origin = this.config.getSocketUrl().replace(/\/$/, "");
+    // socket.io derives the NAMESPACE from the URL's path, so the origin handed to io() must be bare.
+    // getSocketUrl() returns the REST base (e.g. `http://host/v7`); `io(`${base}/secure`)` would
+    // request namespace `/v7/secure`, which the server (`io.of("/secure")`) rejects as
+    // "Invalid namespace" — 5× connect_error, zero realtime. Strip to the origin (scheme://host:port)
+    // so the namespace is exactly `/secure`, correct-by-construction: no caller can re-leak the path.
+    const origin = new URL(this.config.getSocketUrl()).origin;
     log.debug("connecting /secure namespace", { origin, projectId: this.config.projectId });
     this.socket = io(`${origin}/secure`, {
       auth: { token: this.config.getAccessToken() },

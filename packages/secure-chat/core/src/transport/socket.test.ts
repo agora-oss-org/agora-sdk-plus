@@ -20,6 +20,7 @@ vi.mock("socket.io-client", () => ({
   io: vi.fn(() => fakeSocket),
 }));
 
+import { io } from "socket.io-client";
 import { SecureChatSocketClient } from "./socket.js";
 
 function makeClient(): SecureChatSocketClient {
@@ -47,5 +48,41 @@ describe("SecureChatSocketClient client→server payloads", () => {
     makeClient().joinDevice("dev_7");
     expect(emit).toHaveBeenCalledWith("join:secure-device", { deviceId: "dev_7" });
     expect(emit).not.toHaveBeenCalledWith("join:secure-device", "dev_7");
+  });
+});
+
+describe("SecureChatSocketClient connection namespace", () => {
+  beforeEach(() => {
+    vi.mocked(io).mockClear();
+    fakeSocket.connected = false;
+  });
+
+  // Regression: getSocketUrl() returns the REST base WITH a path (e.g. `/v7`). socket.io parses the
+  // URL path as the namespace, so passing it through verbatim requested `/v7/secure` and the server
+  // (io.of("/secure")) rejected it as "Invalid namespace" — 5× connect_error, zero realtime. connect()
+  // must strip to the bare origin so the namespace is exactly `/secure`.
+  it("connects to the bare-origin /secure namespace, stripping the REST path (/v7)", () => {
+    const client = new SecureChatSocketClient({
+      projectId: "proj_1",
+      getSocketUrl: () => "http://host:4000/v7",
+      getAccessToken: () => "tok",
+    });
+    client.joinConversation("c1"); // triggers connect()
+    expect(io).toHaveBeenCalledWith(
+      "http://host:4000/secure",
+      expect.objectContaining({ query: { projectId: "proj_1" } })
+    );
+    // Guard the exact regression: never the namespace-polluting `/v7/secure`.
+    expect(io).not.toHaveBeenCalledWith("http://host:4000/v7/secure", expect.anything());
+  });
+
+  it("is unaffected when getSocketUrl already returns a bare origin", () => {
+    const client = new SecureChatSocketClient({
+      projectId: "p",
+      getSocketUrl: () => "https://api.example.com",
+      getAccessToken: () => "t",
+    });
+    client.joinConversation("c1");
+    expect(io).toHaveBeenCalledWith("https://api.example.com/secure", expect.anything());
   });
 });

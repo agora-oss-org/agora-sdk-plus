@@ -6,6 +6,18 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Fixed
+
+- **`/secure` socket connected to the wrong namespace — realtime never worked.** `SecureChatSocketClient.connect()`
+  built the socket URL from `getSocketUrl()` (the REST base, e.g. `http://host/v7`) and only stripped a
+  trailing slash, so `io(`${base}/secure`)` requested namespace `/v7/secure`. socket.io derives the
+  namespace from the URL path, and the server registers `io.of("/secure")` — so every connect was
+  rejected as *Invalid namespace* (5× `connect_error`, zero `/secure` connections). Now strips to the
+  bare origin via `new URL(getSocketUrl()).origin`, so the namespace is exactly `/secure`,
+  correct-by-construction (no caller can re-leak the `/v7` path). Diagnosed by the agora-server team;
+  server needs no change. Locked by new `socket.test.ts` cases asserting the bare-origin `/secure` URL
+  (and never `/v7/secure`).
+
 ## [0.6.2] — 2026-06-17
 
 ### Added
