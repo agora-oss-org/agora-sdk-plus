@@ -125,6 +125,35 @@ export class SecureChatRestClient {
     await this.http.delete(`/devices/${encodeURIComponent(deviceId)}`);
   }
 
+  /**
+   * Does the server still hold this device row? Probes the cheap device-scoped key-package count
+   * endpoint, which is gated by the server's `getMyDevice()` and 404s with
+   * `secure-chat/device-not-found` when the row was wiped or revoked. Used to reconcile the
+   * split-brain where a client persists a device locally that the server no longer has — adopting
+   * such a ghost leaves every device-scoped call failing 404 with no recovery path.
+   *
+   * - `true`  on 200 — the server has it; safe to adopt the persisted identity.
+   * - `false` on a definitive `404 secure-chat/device-not-found` — split-brain; the caller MUST clear
+   *   local state and re-register rather than trust the ghost.
+   * - RE-THROWS any other error (network / 5xx) so a transient failure is never mistaken for
+   *   "device gone" — destroying local crypto identity over a blip would be a far worse failure.
+   */
+  async deviceExists(deviceId: string): Promise<boolean> {
+    try {
+      await this.http.get(`/devices/${encodeURIComponent(deviceId)}/key-packages/count`);
+      return true;
+    } catch (err) {
+      if (
+        axios.isAxiosError(err) &&
+        err.response?.status === 404 &&
+        (err.response.data as { code?: string } | undefined)?.code === "secure-chat/device-not-found"
+      ) {
+        return false;
+      }
+      throw err;
+    }
+  }
+
   // ── KeyPackages ──────────────────────────────────────────────────────────────
   /**
    * Publish a batch of fresh, single-use KeyPackages for one of the caller's devices so peers can

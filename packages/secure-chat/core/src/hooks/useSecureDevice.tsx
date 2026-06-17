@@ -122,20 +122,64 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
     let alive = true;
     (async () => {
       const persisted = await repo.loadDevice();
-      if (!alive || registerStartedRef.current) {
+      // DEAD CLOSURE — this effect run was superseded. React StrictMode (dev) mounts every effect
+      // twice: run → cleanup → run, and the cleanup flips this closure's `alive` to false. A superseded
+      // run MUST NOT touch React state. The critical line is that it must NOT call setLoading(false):
+      // doing so flips loading→false while `device` is still null, which makes the app's typical
+      // `if (!loading && !device) register()` bootstrap fire a SPURIOUS registration BEFORE the live
+      // remount can rehydrate the persisted device. That premature register() is the root cause of
+      // device churn — a brand-new server device row on every reload. So a dead run just returns and
+      // leaves all state (loading included) to the live run. (Was: `if (!alive || registerStarted)
+      // setLoading(false)` — folding `!alive` into the loading-settle was the bug.)
+      if (!alive) return;
+      // LIVE run, but register() already started (the app called it eagerly). Don't clobber its
+      // identity — but loading IS this run's to settle, so flip it off.
+      if (registerStartedRef.current) {
         setLoading(false);
         return;
       }
-      if (persisted) {
-        await crypto.importDeviceState(persisted.deviceState);
-        // register() may have started during the await — don't overwrite its identity.
-        if (!alive || registerStartedRef.current) {
+      if (persisted && persisted.device) {
+        // SPLIT-BRAIN RECONCILE. A device can be persisted locally while the server no longer has its
+        // row (DB wiped, or the device was revoked). Adopting that ghost is fatal: every device-scoped
+        // call (handshake catch-up, key-package count, conversation create) then 404s forever, and the
+        // app never recovers because `device` looks set so the `!device ⇒ register()` bootstrap never
+        // fires. So verify server-side BEFORE adopting. A definitive 404 ⇒ wipe ALL local secure-chat
+        // state (device + every ghost group + cursor) and fall through to the no-device path, so the app
+        // re-registers clean. A transient probe error keeps the identity (offline tolerance — see
+        // deviceExists). Skip the probe entirely if register() already started; it does its own verify.
+        let serverHasDevice = true;
+        try {
+          serverHasDevice = await rest.deviceExists(persisted.device.id);
+        } catch (probeErr) {
+          log.debug("device existence probe failed (transient) — keeping persisted identity", {
+            error: String(probeErr),
+          });
+        }
+        if (!alive) return;
+        if (registerStartedRef.current) {
           setLoading(false);
           return;
         }
-        deviceIdRef.current = persisted.deviceId;
-        setDevice(persisted.device);
-        log.debug("re-hydrated persisted device", { deviceId: persisted.deviceId });
+        if (!serverHasDevice) {
+          log.debug("persisted device missing server-side — clearing local state, will re-register", {
+            deviceId: persisted.deviceId,
+          });
+          await repo.clearAll();
+          if (!alive) return;
+          log.debug("no persisted device — awaiting register()");
+        } else {
+          await crypto.importDeviceState(persisted.deviceState);
+          // We awaited importDeviceState — re-check the same way. Dead closure ⇒ bail without touching
+          // state; register-started ⇒ settle loading but keep register()'s identity.
+          if (!alive) return;
+          if (registerStartedRef.current) {
+            setLoading(false);
+            return;
+          }
+          deviceIdRef.current = persisted.deviceId;
+          setDevice(persisted.device);
+          log.debug("re-hydrated persisted device", { deviceId: persisted.deviceId });
+        }
       } else {
         log.debug("no persisted device — awaiting register()");
       }
@@ -148,7 +192,7 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
     return () => {
       alive = false;
     };
-  }, [repo, crypto]);
+  }, [repo, crypto, rest]);
 
   const publishKeyPackages = useCallback(
     async (count: number = keyPackageTarget): Promise<number> => {
@@ -209,6 +253,47 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
     setRegistering(true);
     setError(null);
     try {
+      // IDEMPOTENCY GUARD (defense-in-depth against device churn). register() can be invoked
+      // spuriously — the app's `if (!loading && !device) register()` can fire during a mount race, a
+      // re-render, or a double-tap — and a naive register() mints a NEW identity + server device row
+      // every time. So first re-check persistence: if a device is already stored AND its private crypto
+      // state still imports, ADOPT it (re-import + set state) and return WITHOUT minting. Re-importing
+      // is cheap and idempotent, so this makes register() safe to call repeatedly: one persisted device
+      // per client, not one per call. This complements the StrictMode mount-effect fix above — that
+      // prevents the spurious trigger; this neutralises it if it happens anyway.
+      // If the persisted state is unusable (corrupt, crypto-version skew, or importDeviceState throws),
+      // fall through to a fresh registration. SPLIT-BRAIN: a device can be persisted locally while the
+      // server no longer has its row (DB wiped / device revoked). Adopting that ghost makes every
+      // device-scoped call 404 forever, so verify server-side first — a definitive 404 ⇒ wipe ALL local
+      // state (device + ghost groups + cursor) and register fresh; a transient probe error keeps the
+      // identity and adopts (offline tolerance — see deviceExists).
+      const persisted = await repo.loadDevice();
+      if (persisted && persisted.device) {
+        let serverHasDevice = true;
+        try {
+          serverHasDevice = await rest.deviceExists(persisted.device.id);
+        } catch (probeErr) {
+          log.debug("device existence probe failed (transient) — adopting persisted device", {
+            error: String(probeErr),
+          });
+        }
+        if (serverHasDevice) {
+          try {
+            await crypto.importDeviceState(persisted.deviceState);
+            deviceIdRef.current = persisted.deviceId;
+            setDevice(persisted.device);
+            log.debug("adopted persisted device (skipped re-register)", { deviceId: persisted.deviceId });
+            return persisted.device;
+          } catch (importErr) {
+            log.debug("persisted device unusable — registering fresh", { error: String(importErr) });
+          }
+        } else {
+          log.debug("persisted device missing server-side — clearing local state, registering fresh", {
+            deviceId: persisted.deviceId,
+          });
+          await repo.clearAll();
+        }
+      }
       const { identity } = await crypto.generateDeviceIdentity({
         deviceId: deviceIdRef.current,
         ciphersuite,

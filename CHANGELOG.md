@@ -8,6 +8,20 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Fixed
 
+- **Device churn + server split-brain in `useSecureDevice`.** Two related causes of a brand-new server
+  device row on every reload are fixed. (1) **StrictMode dead-closure:** the mount effect's superseded
+  (dev double-invoke) run called `setLoading(false)` while `device` was still null, so the app's
+  `if (!loading && !device) register()` bootstrap fired a spurious registration before the live remount
+  could re-hydrate — a superseded run now bails without touching state. (2) **Split-brain reconcile:** a
+  device persisted locally whose server row is gone (DB wiped / revoked) was adopted blindly, leaving
+  every device-scoped call 404ing forever with no recovery (the `!device ⇒ register()` path never fires
+  because `device` looks set). Both the mount effect and `register()` now verify server-side first via
+  the new `SecureChatRestClient.deviceExists()` (probes the device-scoped key-package count; a definitive
+  `404 secure-chat/device-not-found` ⇒ wipe all local state via `repo.clearAll()` and re-register clean;
+  a transient probe error keeps the identity for offline tolerance). `register()` also gains an
+  idempotency guard: if a usable persisted device exists, it re-imports and adopts instead of minting a
+  new identity, so repeated calls yield one device, not one per call.
+
 - **`/secure` socket connected to the wrong namespace — realtime never worked.** `SecureChatSocketClient.connect()`
   built the socket URL from `getSocketUrl()` (the REST base, e.g. `http://host/v7`) and only stripped a
   trailing slash, so `io(`${base}/secure`)` requested namespace `/v7/secure`. socket.io derives the

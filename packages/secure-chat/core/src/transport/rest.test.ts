@@ -279,6 +279,34 @@ describe("SecureChatRestClient — devices", () => {
     expect(captured.method).toBe("delete");
     expect(captured.url).toBe("/devices/a%2Fb%20c");
   });
+
+  it("deviceExists returns true and probes the count endpoint when the server has the device", async () => {
+    response = { status: 200, data: { available: 7 } };
+    const exists = await makeClient().deviceExists("dev-row-1");
+    expect(captured.method).toBe("get");
+    expect(captured.url).toBe("/devices/dev-row-1/key-packages/count");
+    expect(exists).toBe(true);
+  });
+
+  it("deviceExists returns false on a definitive 404 device-not-found (split-brain signal)", async () => {
+    response = { status: 404, data: { code: "secure-chat/device-not-found" } };
+    const exists = await makeClient().deviceExists("dev-row-gone");
+    expect(exists).toBe(false);
+  });
+
+  it("deviceExists re-throws a 404 that is NOT device-not-found (don't misread an unrelated 404)", async () => {
+    response = { status: 404, data: { code: "secure-chat/something-else" } };
+    await expect(makeClient().deviceExists("dev-row-1")).rejects.toMatchObject({
+      response: { status: 404 },
+    });
+  });
+
+  it("deviceExists re-throws a 5xx (transient — must never be mistaken for 'device gone')", async () => {
+    response = { status: 503, data: { code: "internal" } };
+    await expect(makeClient().deviceExists("dev-row-1")).rejects.toMatchObject({
+      response: { status: 503 },
+    });
+  });
 });
 
 describe("SecureChatRestClient — key packages", () => {

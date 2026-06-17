@@ -31,6 +31,7 @@ function wrap(crypto: MockSecureChatCrypto, store: MemoryStore) {
 let handlers: Record<string, (...a: unknown[]) => void>;
 let countSpy: ReturnType<typeof vi.spyOn>;
 let pubSpy: ReturnType<typeof vi.spyOn>;
+let existsSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   handlers = {};
@@ -43,6 +44,9 @@ beforeEach(() => {
   pubSpy = vi
     .spyOn(SecureChatRestClient.prototype, "publishKeyPackages")
     .mockImplementation(async (_id, body) => body.keyPackages.length);
+  // Default: the server still has the device, so verify-on-adopt adopts the persisted identity.
+  // Split-brain tests override this to false (server lost the row) or reject (transient probe error).
+  existsSpy = vi.spyOn(SecureChatRestClient.prototype, "deviceExists").mockResolvedValue(true);
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -193,5 +197,136 @@ describe("useSecureDevice", () => {
     });
     expect(published).toBe(17);
     expect((pubSpy.mock.calls[0][1] as { keyPackages: unknown[] }).keyPackages).toHaveLength(17);
+  });
+
+  // ── Device-churn guard ──────────────────────────────────────────────────────
+  // Regression for the bug where every reload minted a NEW server device row (one per StrictMode
+  // dev remount) instead of reusing the persisted one. Two layers are tested: register() idempotency
+  // (adopt, don't mint) and the StrictMode mount-race that used to trigger the spurious register().
+
+  /** Seed `store` with a persisted, importable device row-1 / dev-x. */
+  async function seedPersistedDevice(store: MemoryStore) {
+    const seed = new MockSecureChatCrypto();
+    await seed.generateDeviceIdentity({ deviceId: "dev-x" });
+    const deviceState = await seed.exportDeviceState();
+    await new SecureChatRepository(store).saveDevice({
+      deviceId: "dev-x",
+      deviceState,
+      device: row("row-1", "dev-x"),
+    });
+  }
+
+  it("register() adopts an existing persisted device instead of minting a new one", async () => {
+    const store = new MemoryStore();
+    await seedPersistedDevice(store);
+    const reg = vi.spyOn(SecureChatRestClient.prototype, "registerDevice");
+
+    // A DIFFERENT deviceId option simulates a spurious register() that's unaware a device is stored.
+    // It must still ADOPT the persisted device (one device per client) — never mint "fresh-id".
+    const { result } = renderHook(() => useSecureDevice({ deviceId: "fresh-id" }), {
+      wrapper: wrap(new MockSecureChatCrypto(), store),
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => {
+      await result.current.register();
+    });
+
+    expect(reg).not.toHaveBeenCalled(); // adopted — no server registration, no churn
+    expect(result.current.device?.id).toBe("row-1");
+  });
+
+  it("does not churn a new device under StrictMode when one is persisted", async () => {
+    const store = new MemoryStore();
+    await seedPersistedDevice(store);
+    const reg = vi.spyOn(SecureChatRestClient.prototype, "registerDevice");
+
+    // StrictMode double-invokes effects (mount → cleanup → mount) in dev. Pre-fix, the dead first run
+    // flipped loading→false with device still null, so the eager bootstrap below fired register() and
+    // minted a churn device. Post-fix the dead run leaves loading alone and register() adopts — so the
+    // persisted device is used and registerDevice is never called.
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <React.StrictMode>
+        <SecureChatProvider crypto={new MockSecureChatCrypto()} projectId="p" store={store} accessToken="t">
+          {children}
+        </SecureChatProvider>
+      </React.StrictMode>
+    );
+    const { result } = renderHook(
+      () => {
+        const d = useSecureDevice();
+        // Mirror the app's typical bootstrap: register once the load settles with no device.
+        React.useEffect(() => {
+          if (!d.loading && !d.device) void d.register();
+        }, [d.loading, d.device, d.register]);
+        return d;
+      },
+      { wrapper }
+    );
+
+    await waitFor(() => expect(result.current.device?.id).toBe("row-1"));
+    expect(reg).not.toHaveBeenCalled();
+  });
+
+  // ── Split-brain reconciliation ──────────────────────────────────────────────
+  // The client can persist a device the server no longer has (DB wiped, or device revoked). Adopting
+  // that ghost makes every device-scoped call 404 forever with no recovery. verify-on-adopt probes the
+  // server (rest.deviceExists) before trusting local identity: a definitive 404 ⇒ clearAll() + fall
+  // through to a fresh register; a transient probe error ⇒ keep the identity (don't nuke crypto state).
+
+  it("mount does NOT adopt a persisted device the server has lost — it clears local state", async () => {
+    const store = new MemoryStore();
+    await seedPersistedDevice(store);
+    existsSpy.mockResolvedValue(false); // server no longer has row-1
+
+    const { result } = renderHook(() => useSecureDevice(), {
+      wrapper: wrap(new MockSecureChatCrypto(), store),
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Ghost not adopted, and persisted state wiped so the app's bootstrap can re-register clean.
+    expect(result.current.device).toBeNull();
+    expect(await new SecureChatRepository(store).loadDevice()).toBeNull();
+  });
+
+  it("register() reconciles a ghost device by clearing local state and registering fresh", async () => {
+    const store = new MemoryStore();
+    // Mount with an EMPTY store so the mount effect no-ops; this isolates register()'s own reconcile.
+    const { result } = renderHook(() => useSecureDevice({ deviceId: "dev-new" }), {
+      wrapper: wrap(new MockSecureChatCrypto(), store),
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // A ghost now sits in the store (left over from a prior session) but the server has lost it.
+    await seedPersistedDevice(store);
+    existsSpy.mockResolvedValue(false);
+    const reg = vi
+      .spyOn(SecureChatRestClient.prototype, "registerDevice")
+      .mockResolvedValue(row("row-2", "dev-new"));
+
+    await act(async () => {
+      await result.current.register();
+    });
+
+    expect(reg).toHaveBeenCalledOnce(); // ghost NOT adopted — minted fresh
+    expect(result.current.device?.id).toBe("row-2");
+    // The fresh device replaced the ghost in the store (clearAll wiped it, then saveDevice persisted row-2).
+    expect((await new SecureChatRepository(store).loadDevice())?.device?.id).toBe("row-2");
+  });
+
+  it("keeps and adopts the persisted device when the existence probe fails transiently", async () => {
+    const store = new MemoryStore();
+    await seedPersistedDevice(store);
+    existsSpy.mockRejectedValue(new Error("network down")); // transient — NOT a definitive 404
+    const reg = vi.spyOn(SecureChatRestClient.prototype, "registerDevice");
+
+    const { result } = renderHook(() => useSecureDevice(), {
+      wrapper: wrap(new MockSecureChatCrypto(), store),
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // A blip must never destroy a working local identity: adopt row-1, don't register fresh or clear.
+    expect(result.current.device?.id).toBe("row-1");
+    expect(reg).not.toHaveBeenCalled();
+    expect(await new SecureChatRepository(store).loadDevice()).not.toBeNull();
   });
 });
