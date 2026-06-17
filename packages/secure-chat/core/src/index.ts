@@ -4,6 +4,9 @@
 // injection of a `SecureChatCrypto`. Platform packages (@agora-sdk/secure-chat-react-js, etc.)
 // re-export this and add the concrete crypto + persistence.
 
+// ── version (generated from package.json; see scripts/write-version.mjs) ──────
+export { VERSION } from "./version.js";
+
 // ── context / provider ──────────────────────────────────────────────────────
 export { SecureChatProvider, useSecureChat } from "./context/secure-chat-context.js";
 export type {
