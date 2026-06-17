@@ -6,6 +6,22 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- **Dev-only trace/debug logging for the secure-chat sync internals.** A tiny, dependency-free logger
+  (`packages/secure-chat/core/src/util/debug.ts`) that is **off by default** and short-circuits on a
+  single boolean when disabled, so a shipped build logs nothing and pays nothing. Toggle it at runtime
+  with the new exports `setSecureChatDebug(on, level?)` / `isSecureChatDebugEnabled()`, or via the
+  `AGORA_SECURE_CHAT_DEBUG` env var / `globalThis.__AGORA_SECURE_CHAT_DEBUG__`. Two levels: `debug`
+  (greppable status lines — method/url/status, seq, epoch, counts, decrypt outcome) and `trace` (full
+  raw payloads). It is a **development aid only** and makes no redaction guarantees — keep it off in
+  production. Instrumented the sync/failure-prone paths: the REST client (one request/response/error
+  trace site covering all endpoints, via interceptors), the `/secure` socket lifecycle + room joins,
+  and the `useSecureHandshakes` (catch-up loop, per-handshake dispatch, dedupe, live-buffer replay,
+  cursor advance), `useSecureMessages` (page load, decrypt outcome, send, live de-dup), and
+  `useSecureDevice` (register, re-hydrate, KeyPackage replenishment) hooks. Unit-tested for the
+  silent-by-default contract and faithful raw output when on.
+
 ## [0.6.0] — 2026-06-16
 
 ### Added

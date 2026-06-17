@@ -14,7 +14,10 @@ import {
 } from "@agora-sdk/secure-chat-crypto";
 import { toBase64, fromBase64, utf8ToBytes, bytesToUtf8 } from "../util/base64.js";
 import { padPlaintext, unpadPlaintext } from "../util/padding.js";
+import { createDebugLogger } from "../util/debug.js";
 import { useSecureChat } from "../context/secure-chat-context.js";
+
+const log = createDebugLogger("messages");
 
 /**
  * Decryption outcome for a stored message:
@@ -158,7 +161,10 @@ export function useSecureMessages(
   const decrypt = useCallback(
     async (model: SecureMessageModel): Promise<DecryptedSecureMessage> => {
       // No handle yet (still resolving) → retryable once it arrives.
-      if (!group) return { model, plaintext: null, status: "pending" };
+      if (!group) {
+        log.trace("decrypt deferred — no group handle yet", { messageId: model.id, epoch: model.epoch });
+        return { model, plaintext: null, status: "pending" };
+      }
       let plaintext: Uint8Array;
       try {
         ({ plaintext } = await crypto.decryptMessage(group, fromBase64(model.ciphertext)));
@@ -169,10 +175,21 @@ export function useSecureMessages(
         // over-window gap, bad auth, malformed, too-old epoch). Fail closed: never show it as text and
         // never silently retry it forever (the old behavior masked replays/forgeries as "pending").
         if (BigInt(model.epoch) > group.epoch) {
+          log.debug("decrypt buffered — message epoch ahead of ours", {
+            messageId: model.id,
+            messageEpoch: model.epoch,
+            groupEpoch: group.epoch.toString(),
+          });
           return { model, plaintext: null, status: "pending" };
         }
         const rejectedReason: SecureDecryptFailureReason =
           err instanceof SecureChatDecryptError ? err.reason : "unknown";
+        log.debug("decrypt rejected (fail closed)", {
+          messageId: model.id,
+          messageEpoch: model.epoch,
+          groupEpoch: group.epoch.toString(),
+          rejectedReason,
+        });
         return { model, plaintext: null, status: "rejected", rejectedReason };
       }
       // Decrypt + MLS authentication succeeded, so the bytes are from a real group member. Strip the
@@ -203,7 +220,21 @@ export function useSecureMessages(
         setHasMore(page.hasMore);
         // Server returns created_at DESC; keep newest-first in state.
         setMessages((prev) => (reset ? decrypted : [...prev, ...decrypted]));
+        log.debug("loaded message page", {
+          conversationId,
+          reset,
+          before: reset ? undefined : before,
+          count: decrypted.length,
+          hasMore: page.hasMore,
+          ok: decrypted.filter((m) => m.status === "ok").length,
+          pending: decrypted.filter((m) => m.status === "pending").length,
+          rejected: decrypted.filter((m) => m.status === "rejected").length,
+        });
       } catch (err) {
+        log.debug("load message page failed", {
+          conversationId,
+          error: err instanceof Error ? err.message : String(err),
+        });
         setError(err);
       } finally {
         setLoading(false);
@@ -237,6 +268,12 @@ export function useSecureMessages(
       );
       const sent = await rest.sendMessage(conversationId, {
         ciphertext: toBase64(ciphertext),
+        epoch: epoch.toString(),
+        senderDeviceId,
+      });
+      log.debug("sent message", {
+        conversationId,
+        messageId: sent.id,
         epoch: epoch.toString(),
         senderDeviceId,
       });
@@ -275,7 +312,18 @@ export function useSecureMessages(
     const off = socket.on("secure:message", (model) => {
       if (model.conversationId !== conversationId) return;
       decrypt(model).then((m) =>
-        setMessages((prev) => (prev.some((p) => p.model.id === m.model.id) ? prev : [m, ...prev]))
+        setMessages((prev) => {
+          if (prev.some((p) => p.model.id === m.model.id)) {
+            log.trace("live message deduped", { messageId: m.model.id });
+            return prev;
+          }
+          log.debug("live message received", {
+            conversationId,
+            messageId: m.model.id,
+            status: m.status,
+          });
+          return [m, ...prev];
+        })
       );
     });
     return off;

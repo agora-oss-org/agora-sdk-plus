@@ -76,3 +76,7 @@ export { padPlaintext, unpadPlaintext, nextBucket } from "./util/padding.js";
 export type { PaddingPolicy } from "./util/padding.js";
 export { computeSafetyNumber } from "./util/safety-number.js";
 export type { SafetyNumber } from "./util/safety-number.js";
+
+// ── dev logging (off by default; see util/debug) ──────────────────────────────
+export { setSecureChatDebug, isSecureChatDebugEnabled } from "./util/debug.js";
+export type { SecureChatDebugLevel, SecureChatDebugLogger } from "./util/debug.js";

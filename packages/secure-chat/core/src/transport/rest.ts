@@ -6,6 +6,7 @@
 // inspects payloads.
 
 import axios, { AxiosInstance } from "axios";
+import { createDebugLogger } from "../util/debug.js";
 import {
   AddSecureMemberBody,
   CreateSecureConversationBody,
@@ -61,6 +62,7 @@ export interface SecureChatRestConfig {
  */
 export class SecureChatRestClient {
   private readonly http: AxiosInstance;
+  private readonly log = createDebugLogger("rest");
 
   constructor(private readonly config: SecureChatRestConfig) {
     this.http = axios.create();
@@ -69,8 +71,33 @@ export class SecureChatRestClient {
       req.baseURL = `${base}/${config.projectId}/secure-chat`;
       const token = config.getAccessToken();
       if (token) req.headers.set("Authorization", `Bearer ${token}`);
+      // One trace site for every endpoint: line = method + path + query; body at trace level only
+      // (request bodies carry base64 KeyPackages/Welcomes/ciphertext — fine for a dev-only switch).
+      const where = `${req.method?.toUpperCase()} ${req.url}`;
+      this.log.debug(`→ ${where}`, req.params);
+      this.log.trace(`→ ${where} body`, req.data);
       return req;
     });
+    this.http.interceptors.response.use(
+      (res) => {
+        const where = `${res.config.method?.toUpperCase()} ${res.config.url}`;
+        this.log.debug(`← ${res.status} ${where}`, summarizeBody(res.data));
+        this.log.trace(`← ${where} body`, res.data);
+        return res;
+      },
+      (err) => {
+        // Errors are surfaced to callers as-is; this only narrates them. 404 on getKeyBackup and the
+        // 409 conflict paths are expected control flow, not bugs — the status makes that legible.
+        if (axios.isAxiosError(err)) {
+          const where = `${err.config?.method?.toUpperCase()} ${err.config?.url}`;
+          this.log.debug(`✗ ${err.response?.status ?? "network-error"} ${where}`, {
+            code: (err.response?.data as { code?: string })?.code,
+            message: err.message,
+          });
+        }
+        return Promise.reject(err);
+      }
+    );
   }
 
   // ── Devices ────────────────────────────────────────────────────────────────
@@ -293,4 +320,20 @@ export class SecureChatRestClient {
       throw err;
     }
   }
+}
+
+/**
+ * Condense a response body into a greppable one-liner for the `debug`-level line — array lengths and
+ * paging flags instead of the full (often base64-heavy) payload, which is left to the `trace` line.
+ *
+ * @param data - The axios response body.
+ * @returns A small summary object (counts + `hasMore`), or the value itself when it isn't an object.
+ */
+function summarizeBody(data: unknown): unknown {
+  if (data == null || typeof data !== "object") return data;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+    out[k] = Array.isArray(v) ? `[${v.length}]` : v;
+  }
+  return out;
 }

@@ -15,7 +15,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SecureDeviceModel } from "../contract/index.js";
 import { toBase64 } from "../util/base64.js";
+import { createDebugLogger } from "../util/debug.js";
 import { useSecureChat } from "../context/secure-chat-context.js";
+
+const log = createDebugLogger("device");
 
 /**
  * Mint a device id when the caller doesn't supply one — `crypto.randomUUID()` when available, else a
@@ -132,6 +135,9 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
         }
         deviceIdRef.current = persisted.deviceId;
         setDevice(persisted.device);
+        log.debug("re-hydrated persisted device", { deviceId: persisted.deviceId });
+      } else {
+        log.debug("no persisted device — awaiting register()");
       }
       setLoading(false);
     })().catch((err) => {
@@ -174,9 +180,18 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
   const replenishToTarget = useCallback(
     async (available: number): Promise<number> => {
       const deficit = keyPackageTarget - available;
-      if (deficit <= 0) return 0;
+      if (deficit <= 0) {
+        log.trace("key-packages at/above target — no top-up", { available, target: keyPackageTarget });
+        return 0;
+      }
       const published = await publishKeyPackages(deficit);
       setKeyPackagesAvailable(available + published);
+      log.debug("replenished key-packages", {
+        available,
+        target: keyPackageTarget,
+        deficit,
+        published,
+      });
       return published;
     },
     [keyPackageTarget, publishKeyPackages]
@@ -208,6 +223,7 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
       await repo.saveDevice({ deviceId: identity.deviceId, deviceState, device: registered });
       deviceIdRef.current = identity.deviceId;
       setDevice(registered);
+      log.debug("registered device", { deviceId: identity.deviceId, ciphersuite: identity.ciphersuite });
       return registered;
     } catch (err) {
       setError(err);
@@ -224,6 +240,7 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
     if (!autoReplenish || !device) return;
     const off = socket.on("secure:key-packages-low", (signal) => {
       if (signal.deviceId !== device.id) return; // device.id is the server ROW id, not the deviceId
+      log.debug("server signalled key-packages low", { deviceId: device.id, available: signal.available });
       setKeyPackagesAvailable(signal.available);
       replenishToTarget(signal.available).catch(setError);
     });

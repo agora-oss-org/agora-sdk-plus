@@ -7,6 +7,9 @@
 
 import { io, Socket } from "socket.io-client";
 import { SecureHandshakeModel, SecureMessageModel } from "../contract/index.js";
+import { createDebugLogger } from "../util/debug.js";
+
+const log = createDebugLogger("socket");
 
 /** Server → client events on the `/secure` namespace (§10). */
 export interface SecureServerEvents {
@@ -68,12 +71,18 @@ export class SecureChatSocketClient {
   connect(): SecureSocket {
     if (this.socket?.connected) return this.socket;
     const origin = this.config.getSocketUrl().replace(/\/$/, "");
+    log.debug("connecting /secure namespace", { origin, projectId: this.config.projectId });
     this.socket = io(`${origin}/secure`, {
       auth: { token: this.config.getAccessToken() },
       query: { projectId: this.config.projectId },
       transports: ["websocket"],
       autoConnect: true,
     });
+    // Lifecycle narration — the realtime layer is a notification optimization (REST cursors are the
+    // source of truth), so a flapping socket shows up here while the durable path keeps working.
+    this.socket.on("connect", () => log.debug("socket connected", { id: this.socket?.id }));
+    this.socket.on("disconnect", (reason) => log.debug("socket disconnected", { reason }));
+    this.socket.on("connect_error", (err) => log.debug("socket connect_error", { message: err.message }));
     return this.socket;
   }
 
@@ -92,11 +101,13 @@ export class SecureChatSocketClient {
   joinConversation(conversationId: string): void {
     // Object payload — the server destructures `{ conversationId }`; a bare string would arrive as
     // `undefined` and the join would silently no-op (see SecureClientEvents).
+    log.trace("join conversation room", { conversationId });
     this.connect().emit("join:secure-conversation", { conversationId });
   }
 
   /** Explicitly join a device room (ownership-verified). Owned devices auto-join on connect. */
   joinDevice(deviceId: string): void {
+    log.trace("join device room", { deviceId });
     this.connect().emit("join:secure-device", { deviceId });
   }
 

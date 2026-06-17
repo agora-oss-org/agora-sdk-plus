@@ -15,7 +15,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SecureHandshakeModel } from "../contract/index.js";
 import { fromBase64 } from "../util/base64.js";
+import { createDebugLogger } from "../util/debug.js";
 import { useSecureChat } from "../context/secure-chat-context.js";
+
+const log = createDebugLogger("handshakes");
 
 /** Compare two decimal-string `seq` cursors numerically (string compare is wrong across digit widths). */
 function compareSeq(a: string, b: string): number {
@@ -130,25 +133,52 @@ export function useSecureHandshakes(
 
     const dispatchByKind = async (h: SecureHandshakeModel): Promise<void> => {
       const payload = fromBase64(h.payload);
+      log.trace("dispatch handshake", {
+        seq: h.seq,
+        kind: h.kind,
+        conversationId: h.conversationId,
+        targetDeviceId: h.targetDeviceId,
+        payloadBytes: payload.length,
+      });
       if (h.kind === "welcome") {
         // Targeted at us → join the group, then join its room for future broadcast Commits.
-        if (h.targetDeviceId && h.targetDeviceId !== deviceId) return;
+        if (h.targetDeviceId && h.targetDeviceId !== deviceId) {
+          log.trace("welcome not for us — skip", { seq: h.seq, targetDeviceId: h.targetDeviceId });
+          return;
+        }
         const handle = await crypto.processWelcome(payload);
         await rememberGroup(h.conversationId, handle);
         socket.joinConversation(h.conversationId);
+        log.debug("joined group from welcome", {
+          seq: h.seq,
+          conversationId: h.conversationId,
+          epoch: handle.epoch.toString(),
+        });
       } else if (h.kind === "commit") {
         const group = await resolveGroup(h.conversationId);
         if (!group) {
           // Unknown group at a Commit: with seq ordering the Welcome precedes it, so we're not a
           // member of this conversation. Skip (the cursor still advances so we don't re-fetch it).
+          log.debug("commit for unknown group — skip", { seq: h.seq, conversationId: h.conversationId });
           report(new Error(`secure-chat: commit for unknown group ${h.conversationId}`), h);
           return;
         }
         const advanced = await crypto.processCommit(group, payload);
         await rememberGroup(h.conversationId, advanced);
+        log.debug("commit advanced epoch", {
+          seq: h.seq,
+          conversationId: h.conversationId,
+          fromEpoch: group.epoch.toString(),
+          toEpoch: advanced.epoch.toString(),
+        });
       } else if (h.kind === "proposal") {
         const group = await resolveGroup(h.conversationId);
         if (group) await crypto.processProposal(group, payload);
+        log.debug("proposal processed", {
+          seq: h.seq,
+          conversationId: h.conversationId,
+          known: !!group,
+        });
       }
     };
 
@@ -156,10 +186,18 @@ export function useSecureHandshakes(
     // when a row is skipped or its dispatch throws, so a poison blob can never wedge the inbox. A hard
     // crash mid-dispatch leaves the cursor unsaved, so the row replays on restart (no loss).
     const applyOrdered = async (h: SecureHandshakeModel): Promise<void> => {
-      if (cursorRef.current !== null && compareSeq(h.seq, cursorRef.current) <= 0) return;
+      if (cursorRef.current !== null && compareSeq(h.seq, cursorRef.current) <= 0) {
+        log.trace("dedupe — already past cursor", { seq: h.seq, cursor: cursorRef.current });
+        return;
+      }
       try {
         await dispatchByKind(h);
       } catch (err) {
+        log.debug("dispatch failed — advancing cursor past poison row", {
+          seq: h.seq,
+          kind: h.kind,
+          error: err instanceof Error ? err.message : String(err),
+        });
         report(err, h);
       }
       cursorRef.current = h.seq;
@@ -178,8 +216,13 @@ export function useSecureHandshakes(
     const enqueueLive = (h: SecureHandshakeModel) => {
       // Buffer while catching up so a high-seq live event can't advance the cursor past rows the
       // catch-up loop hasn't fetched yet (which the dedupe check would then drop).
-      if (catchingUpRef.current) liveBuffer.push(h);
-      else schedule(h);
+      if (catchingUpRef.current) {
+        liveBuffer.push(h);
+        log.trace("buffered live event during catch-up", { seq: h.seq, buffered: liveBuffer.length });
+      } else {
+        log.trace("live event scheduled", { seq: h.seq, kind: h.kind });
+        schedule(h);
+      }
     };
 
     // Coalesce overlapping invocations: a `resync()` fired while a catch-up is still draining returns
@@ -190,11 +233,21 @@ export function useSecureHandshakes(
       if (catchUpInFlight) return catchUpInFlight;
       catchUpInFlight = (async () => {
         catchingUpRef.current = true;
+        log.debug("catch-up start", { deviceId, fromCursor: cursorRef.current, pageSize });
+        let pages = 0;
+        let fetched = 0;
         try {
           for (;;) {
             const page = await rest.fetchHandshakes(deviceId!, {
               since: cursorRef.current ?? undefined,
               limit: pageSize,
+            });
+            pages += 1;
+            fetched += page.handshakes.length;
+            log.trace("catch-up page", {
+              page: pages,
+              count: page.handshakes.length,
+              hasMore: page.hasMore,
             });
             for (const h of page.handshakes) await schedule(h);
             if (!page.hasMore) break;
@@ -203,6 +256,13 @@ export function useSecureHandshakes(
           catchingUpRef.current = false;
           // Replay anything that landed live during catch-up, in seq order, through the same queue.
           const buffered = liveBuffer.splice(0).sort((a, b) => compareSeq(a.seq, b.seq));
+          log.debug("catch-up done", {
+            deviceId,
+            pages,
+            fetched,
+            toCursor: cursorRef.current,
+            replayBuffered: buffered.length,
+          });
           for (const h of buffered) schedule(h);
         }
       })().finally(() => {
@@ -232,6 +292,7 @@ export function useSecureHandshakes(
       try {
         const convIds = await repo.listGroupConversationIds();
         for (const c of convIds) socket.joinConversation(c);
+        log.debug("re-joined socket rooms for known groups", { count: convIds.length });
       } catch (err) {
         report(err);
       }
@@ -239,6 +300,7 @@ export function useSecureHandshakes(
       if (alive) {
         setCatchingUp(false);
         setReady(true);
+        log.debug("ready", { deviceId, cursor: cursorRef.current });
       }
     })().catch((err) => report(err));
 
