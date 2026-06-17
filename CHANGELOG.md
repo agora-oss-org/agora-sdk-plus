@@ -6,7 +6,7 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
-## [0.6.1] — 2026-06-17
+## [0.6.2] — 2026-06-17
 
 ### Added
 
