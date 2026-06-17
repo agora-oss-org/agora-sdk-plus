@@ -41,11 +41,21 @@ describe("SecureChatRepository", () => {
     expect(await repo.loadGroupState("c1")).toBeNull();
   });
 
-  it("round-trips the handshake cursor", async () => {
+  it("round-trips the handshake cursor (scoped to a device row id)", async () => {
     const repo = new SecureChatRepository(new MemoryStore());
-    expect(await repo.loadHandshakeCursor()).toBeNull();
-    await repo.saveHandshakeCursor("42");
-    expect(await repo.loadHandshakeCursor()).toBe("42");
+    expect(await repo.loadHandshakeCursor("row-1")).toBeNull();
+    await repo.saveHandshakeCursor("row-1", "42");
+    expect(await repo.loadHandshakeCursor("row-1")).toBe("42");
+  });
+
+  it("does not leak a cursor across device row ids (the re-register / wipe regression)", async () => {
+    // A pre-wipe device left cursor=15 in the store; a freshly-registered device gets a new row id
+    // and MUST start from null — else the global `seq` sequence (which survives a server DELETE) can
+    // collide with the stale cursor and mask the new device's own Welcome.
+    const repo = new SecureChatRepository(new MemoryStore());
+    await repo.saveHandshakeCursor("old-row", "15");
+    expect(await repo.loadHandshakeCursor("new-row")).toBeNull();
+    expect(await repo.loadHandshakeCursor("old-row")).toBe("15"); // the old row is unaffected
   });
 
   it("clearAll wipes every key", async () => {
@@ -53,7 +63,7 @@ describe("SecureChatRepository", () => {
     const repo = new SecureChatRepository(store);
     await repo.saveDevice({ deviceId: "d", deviceState: bytes(1), device: null });
     await repo.saveGroupState("c1", bytes(2));
-    await repo.saveHandshakeCursor("3");
+    await repo.saveHandshakeCursor("row-1", "3");
     await repo.clearAll();
     expect(await store.list("")).toEqual([]);
   });

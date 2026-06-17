@@ -8,6 +8,22 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Fixed
 
+- **Stale handshake cursor masked a re-registered device's own Welcome (recipient never joined).** The
+  delivery cursor was persisted under one global key (`handshake:cursor`), untethered from the device it
+  belonged to. After a server wipe / device revoke + re-register, the new device row (a fresh server UUID)
+  inherited the dead device's cursor; because the blind DS `seq` is a global Postgres sequence that
+  survives a `DELETE`, the new Welcome could land on exactly the stale cursor's `seq`, and the handshakes
+  query (`seq > since`, strictly greater) then dropped it — so the recipient fetched its inbox, skipped its
+  own Welcome, never built the MLS group, and the conversation rendered one-sided. The cursor is now
+  **scoped by device row id** (`handshake:cursor:<rowId>`): a re-registered device gets a new key ⇒ a fresh
+  `null` cursor ⇒ it fetches `since=undefined` and receives its Welcome. `loadHandshakeCursor` /
+  `saveHandshakeCursor` take the row id (the value `useSecureHandshakes` already resolves before draining);
+  the effect's dep on the row id re-runs catch-up clean on re-registration. Also closes a latent
+  multi-device data-loss bug (two device rows sharing one store clobbered each other's cursor). Locked by
+  repository + `useSecureHandshakes` regression tests (a stale cursor under a different row id no longer
+  masks the Welcome; catch-up fetches `since=undefined`). Server unchanged — its strictly-greater
+  semantics are correct.
+
 - **Device churn + server split-brain in `useSecureDevice`.** Two related causes of a brand-new server
   device row on every reload are fixed. (1) **StrictMode dead-closure:** the mount effect's superseded
   (dev double-invoke) run called `setLoading(false)` while `device` was still null, so the app's

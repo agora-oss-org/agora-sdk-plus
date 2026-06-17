@@ -201,7 +201,7 @@ export function useSecureHandshakes(
         report(err, h);
       }
       cursorRef.current = h.seq;
-      await repo.saveHandshakeCursor(h.seq);
+      await repo.saveHandshakeCursor(deviceId!, h.seq);
       if (alive) {
         setCursor(h.seq);
         setProcessedCount((n) => n + 1);
@@ -277,7 +277,7 @@ export function useSecureHandshakes(
       deviceId = deviceIdOption ?? (await repo.loadDevice())?.device?.id;
       if (!alive || !deviceId) return;
 
-      cursorRef.current = await repo.loadHandshakeCursor();
+      cursorRef.current = await repo.loadHandshakeCursor(deviceId);
       if (alive) setCursor(cursorRef.current);
 
       // Subscribe to live events BEFORE catch-up (buffered until catch-up completes).

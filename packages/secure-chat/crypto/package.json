@@ -1,6 +1,6 @@
 {
   "name": "@agora-sdk/secure-chat-crypto",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "private": false,
   "license": "Apache-2.0",
   "author": "Agora SDK Plus, maintained by Jenova Marie",

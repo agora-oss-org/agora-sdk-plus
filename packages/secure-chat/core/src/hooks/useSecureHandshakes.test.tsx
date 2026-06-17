@@ -90,7 +90,31 @@ describe("useSecureHandshakes", () => {
     expect(await store.get("group:conv-1")).not.toBeNull(); // joined + persisted
     expect(joinSpy).toHaveBeenCalledWith("conv-1");
     expect(result.current.cursor).toBe("1");
-    expect(await new SecureChatRepository(store).loadHandshakeCursor()).toBe("1");
+    expect(await new SecureChatRepository(store).loadHandshakeCursor("bob-row")).toBe("1");
+  });
+
+  it("ignores a stale cursor left under a different device row id (Bug B regression)", async () => {
+    // Reproduces Alice's failure: a pre-wipe session left cursor=15 in the store, the global `seq`
+    // sequence survived the server DELETE, and the new Welcome landed on seq 15. With a global cursor,
+    // the catch-up fetched `since=15` and the strictly-greater server query dropped the Welcome. Scoped
+    // by row id, the fresh device ("bob-row") sees a null cursor → fetches `since=undefined` → joins.
+    const store = new MemoryStore();
+    await new SecureChatRepository(store).saveHandshakeCursor("ghost-row", "15");
+    const { welcomePayload } = await makeGroupAndWelcome();
+    const fetchSpy = vi.spyOn(SecureChatRestClient.prototype, "fetchHandshakes").mockResolvedValue({
+      handshakes: [welcomeRow("15", welcomePayload)], hasMore: false,
+    });
+
+    const recipient = new MockSecureChatCrypto();
+    await seedDevice(store);
+
+    const { result } = renderHook(() => useSecureHandshakes(), { wrapper: wrap(recipient, store) });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    expect(fetchSpy.mock.calls[0]?.[1]).toEqual({ since: undefined, limit: 100 }); // NOT since:"15"
+    expect(await store.get("group:conv-1")).not.toBeNull(); // Welcome processed → group joined
+    expect(result.current.cursor).toBe("15");
+    expect(await new SecureChatRepository(store).loadHandshakeCursor("bob-row")).toBe("15");
   });
 
   it("live: processes a Welcome that arrives after catch-up completes", async () => {

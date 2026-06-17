@@ -10,7 +10,12 @@ import { toBase64, fromBase64, utf8ToBytes, bytesToUtf8 } from "../util/base64.j
 
 const DEVICE_KEY = "device";
 const GROUP_PREFIX = "group:";
-const CURSOR_KEY = "handshake:cursor";
+// Scoped by device ROW id (the server UUID, re-minted on every registration) — NOT the stable client
+// deviceId. The delivery cursor must die with the device it belongs to: a wiped/revoked+re-registered
+// device gets a new row id ⇒ a new key ⇒ a fresh (null) cursor ⇒ it fetches its inbox from the start
+// and receives its own Welcome. A global key let a stale cursor outlive its device and mask the
+// Welcome whose `seq` it had already passed (the handshakes query is strictly `seq > since`).
+const CURSOR_PREFIX = "handshake:cursor:";
 
 /** The persisted device record: stable id, opaque crypto device-state, and the server row. */
 export interface PersistedDevice {
@@ -76,15 +81,15 @@ export class SecureChatRepository {
     return keys.map((k) => k.slice(GROUP_PREFIX.length));
   }
 
-  /** Load the persisted handshake delivery cursor (`seq`), or `null`. */
-  async loadHandshakeCursor(): Promise<string | null> {
-    const bytes = await this.store.get(CURSOR_KEY);
+  /** Load this device row's persisted handshake delivery cursor (`seq`), or `null`. */
+  async loadHandshakeCursor(deviceRowId: string): Promise<string | null> {
+    const bytes = await this.store.get(CURSOR_PREFIX + deviceRowId);
     return bytes ? bytesToUtf8(bytes) : null;
   }
 
-  /** Persist the handshake delivery cursor (`seq`). */
-  async saveHandshakeCursor(seq: string): Promise<void> {
-    await this.store.set(CURSOR_KEY, utf8ToBytes(seq));
+  /** Persist this device row's handshake delivery cursor (`seq`). */
+  async saveHandshakeCursor(deviceRowId: string, seq: string): Promise<void> {
+    await this.store.set(CURSOR_PREFIX + deviceRowId, utf8ToBytes(seq));
   }
 
   /** Wipe all persisted secure-chat state (sign-out / device revoke). */
