@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { MockSecureChatCrypto } from "@agora-sdk/secure-chat-crypto/testing";
 import { SecureChatProvider, useSecureChat } from "./secure-chat-context.js";
@@ -53,6 +53,13 @@ describe("SecureChatProvider persistence wiring", () => {
   });
 
   it("throws when useSecureChat is used outside the provider", () => {
-    expect(() => renderHook(() => useSecureChat())).toThrow(/within a <SecureChatProvider>/);
+    // React also dumps the (expected) render-time throw to console.error with an error-boundary
+    // suggestion; swallow it for this one negative case so the throw we assert doesn't spam stderr.
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => renderHook(() => useSecureChat())).toThrow(/within a <SecureChatProvider>/);
+    } finally {
+      errSpy.mockRestore();
+    }
   });
 });

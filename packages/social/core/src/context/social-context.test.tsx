@@ -62,6 +62,13 @@ describe("SocialProvider", () => {
   });
 
   it("throws when useSocial is used outside a provider", () => {
-    expect(() => renderHook(() => useSocial())).toThrow(/within a <SocialProvider>/);
+    // React also dumps the (expected) render-time throw to console.error with an error-boundary
+    // suggestion; swallow it for this one negative case so the throw we assert doesn't spam stderr.
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => renderHook(() => useSocial())).toThrow(/within a <SocialProvider>/);
+    } finally {
+      errSpy.mockRestore();
+    }
   });
 });
