@@ -17,7 +17,8 @@ describe("backup envelope codec (argon2id + xchacha20poly1305)", () => {
   }, SLOW);
 
   it("emits a real argon2id + xchacha20poly1305 envelope (not the mock's fake KDF)", async () => {
-    const sealed = await sealBackup(enc.encode("x"), "pw");
+    const plaintext = enc.encode("plaintext to encrypt");
+    const sealed = await sealBackup(plaintext, "pw");
     expect(sealed.kdf).toBe("argon2id");
     expect(sealed.cipher).toBe("xchacha20poly1305");
     expect(sealed.version).toBe(1);
@@ -25,8 +26,11 @@ describe("backup envelope codec (argon2id + xchacha20poly1305)", () => {
     const salt = fromHex((sealed.kdfParams as { salt: string }).salt);
     expect(salt).toHaveLength(16);
     expect(sealed.kdfParams).toMatchObject({ m: ARGON2_PARAMS.m, t: ARGON2_PARAMS.t, p: ARGON2_PARAMS.p });
-    // The blob must not be the plaintext.
-    expect(dec.decode(sealed.blob)).not.toContain("x");
+    // The blob is ciphertext, not the plaintext: the bytes differ, and it's longer than the plaintext
+    // by the AEAD tag (16 bytes). Assert on BYTES, not a decoded-string `.toContain` — random
+    // ciphertext bytes legitimately decode to any character, so a char check is non-deterministic.
+    expect(Array.from(sealed.blob)).not.toEqual(Array.from(plaintext));
+    expect(sealed.blob.length).toBe(plaintext.length + 16); // poly1305 tag appended
   }, SLOW);
 
   it("uses a fresh random salt + nonce each call (same input → different ciphertext)", async () => {

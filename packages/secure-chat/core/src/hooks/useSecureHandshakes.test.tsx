@@ -40,7 +40,7 @@ afterEach(() => vi.restoreAllMocks());
 
 function wrap(crypto: MockSecureChatCrypto, store: MemoryStore) {
   return ({ children }: { children: React.ReactNode }) => (
-    <SecureChatProvider crypto={crypto} projectId="p" store={store} accessToken="t">
+    <SecureChatProvider crypto={crypto} projectId="p" baseUrl="http://localhost:4000/v7" store={store} accessToken="t">
       {children}
     </SecureChatProvider>
   );
@@ -280,21 +280,31 @@ describe("useSecureHandshakes", () => {
     expect(result.current.cursor).toBe("2");
   });
 
-  it("skips a handshake whose processing throws and advances past it (no wedge)", async () => {
-    const { welcomePayload } = await makeGroupAndWelcome();
+  it("advances past a non-welcome row whose processing throws (no wedge)", async () => {
+    // A throwing row that is NOT a for-us Welcome (here a Commit for a group we already hold) must
+    // still advance the cursor, so a poison blob can never wedge the inbox. Only a for-us WELCOME
+    // that throws is held for retry instead (the next test) — because skipping a Welcome strands the
+    // recipient, whereas skipping a bad Commit/Proposal is safe.
+    const { creator, group } = await makeGroupAndWelcome();
     const recipient = new MockSecureChatCrypto();
-    const processWelcomeSpy = vi
-      .spyOn(recipient, "processWelcome")
-      .mockRejectedValueOnce(new Error("bad blob")); // first row poisons; later calls run for real
     const store = new MemoryStore();
     await seedDevice(store);
+    // Recipient already holds conv-1 (joined out of band) so the Commit dispatches to processCommit.
+    const handle = await recipient.importGroupState(await creator.exportGroupState(group));
+    await new SecureChatRepository(store).saveGroupState("conv-1", await recipient.exportGroupState(handle));
+    const processCommitSpy = vi
+      .spyOn(recipient, "processCommit")
+      .mockRejectedValueOnce(new Error("bad commit"));
+    const b = await makeGroupAndWelcome(); // a separate, good Welcome for conv-2
     const errors: unknown[] = [];
 
+    const commit = await creator.addMember(group, { deviceId: "carol-row", keyPackage: new Uint8Array() });
+    const commitRow: SecureHandshakeModel = {
+      id: "h-1", seq: "1", kind: "commit", conversationId: "conv-1", epoch: "1",
+      payload: toBase64(commit.commit), senderDeviceId: "alice-row", targetDeviceId: null,
+    };
     vi.spyOn(SecureChatRestClient.prototype, "fetchHandshakes").mockResolvedValue({
-      handshakes: [
-        welcomeRow("1", welcomePayload),
-        { ...welcomeRow("2", welcomePayload), conversationId: "conv-2" },
-      ],
+      handshakes: [commitRow, { ...welcomeRow("2", b.welcomePayload), conversationId: "conv-2" }],
       hasMore: false,
     });
 
@@ -303,10 +313,52 @@ describe("useSecureHandshakes", () => {
     });
     await waitFor(() => expect(result.current.ready).toBe(true));
 
-    expect(errors).toHaveLength(1); // the poison row was reported
-    expect(await store.get("group:conv-1")).toBeNull(); // seq 1 threw → not joined
+    expect(errors).toHaveLength(1); // the throwing commit was reported
     expect(await store.get("group:conv-2")).not.toBeNull(); // seq 2 still processed (no wedge)
-    expect(result.current.cursor).toBe("2"); // cursor advanced past the poison row
+    expect(result.current.cursor).toBe("2"); // cursor advanced past the throwing commit
+    expect(processCommitSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds the cursor on a for-us Welcome that throws, then joins on retry (self-heal)", async () => {
+    // The fix for the "stuck on ⏳ waiting for key update forever" bug. A Welcome addressed to us whose
+    // processWelcome throws (e.g. its KeyPackage private key isn't restored yet) must NOT advance the
+    // cursor — otherwise catch-up's strictly-greater `since=cursor` skips it forever and the recipient
+    // never joins. The cursor is HELD so the next catch-up re-fetches and retries → self-heal.
+    const { welcomePayload } = await makeGroupAndWelcome();
+    const recipient = new MockSecureChatCrypto();
+    // Throw once (the KeyPackage "isn't available yet"); the retry runs the real impl and joins.
+    const processWelcomeSpy = vi
+      .spyOn(recipient, "processWelcome")
+      .mockRejectedValueOnce(new Error("no matching KeyPackage for this Welcome"));
+    const store = new MemoryStore();
+    await seedDevice(store);
+    const errors: unknown[] = [];
+
+    vi.spyOn(SecureChatRestClient.prototype, "fetchHandshakes").mockResolvedValue({
+      handshakes: [welcomeRow("1", welcomePayload)],
+      hasMore: false,
+    });
+
+    const { result } = renderHook(() => useSecureHandshakes({ onError: (e) => errors.push(e) }), {
+      wrapper: wrap(recipient, store),
+    });
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    // First drain: the Welcome threw → HELD. Not joined; cursor NOT advanced (stays null in state AND
+    // in persistence, so a reload re-fetches from the start); the failure was surfaced via onError.
+    expect(await store.get("group:conv-1")).toBeNull();
+    expect(result.current.cursor).toBeNull();
+    expect(await new SecureChatRepository(store).loadHandshakeCursor("bob-row")).toBeNull();
+    expect(errors).toHaveLength(1);
+    expect(processWelcomeSpy).toHaveBeenCalledTimes(1);
+
+    // Second drain (resync = what a reload / next catch-up does): re-fetches `since=null` → re-serves
+    // the Welcome → processWelcome now succeeds → group joined, cursor advances.
+    await act(async () => {
+      await result.current.resync();
+    });
+    await waitFor(async () => expect(await store.get("group:conv-1")).not.toBeNull());
+    expect(result.current.cursor).toBe("1");
     expect(processWelcomeSpy).toHaveBeenCalledTimes(2);
   });
 

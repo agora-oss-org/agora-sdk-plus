@@ -206,9 +206,23 @@ export function useSecureDevice(options: UseSecureDeviceOptions = {}): UseSecure
           expiresAt: b.expiresAt,
         })),
       });
+      // CRITICAL: generateKeyPackages put these KeyPackages' PRIVATE keys into the crypto's in-memory
+      // store; only the PUBLIC halves went to the server. Persist the updated device state NOW so those
+      // private keys survive a reload. Without this, a peer who claims one of these KeyPackages and
+      // builds a Welcome from it can never be joined in a later session: on reload importDeviceState
+      // rehydrates the device-state snapshot taken at register() time (before any KeyPackages existed),
+      // so processWelcome finds "no matching KeyPackage" and the recipient is stranded on "waiting for
+      // key update" forever. register() persists once, but KeyPackages are minted here, after — so this
+      // is the only place that captures them. The blob is identity + pending KeyPackages only (no group
+      // secrets), so re-exporting on each replenish is cheap.
+      await repo.saveDevice({
+        deviceId: deviceIdRef.current,
+        deviceState: await crypto.exportDeviceState(),
+        device,
+      });
       return published;
     },
-    [crypto, rest, device, keyPackageTarget]
+    [crypto, rest, repo, device, keyPackageTarget]
   );
 
   const refreshKeyPackageCount = useCallback(async (): Promise<number> => {

@@ -19,7 +19,7 @@ const row = (id: string, deviceId: string): SecureDeviceModel => ({
 
 function wrap(crypto: MockSecureChatCrypto, store: MemoryStore) {
   return ({ children }: { children: React.ReactNode }) => (
-    <SecureChatProvider crypto={crypto} projectId="p" store={store} accessToken="t">
+    <SecureChatProvider crypto={crypto} projectId="p" baseUrl="http://localhost:4000/v7" store={store} accessToken="t">
       {children}
     </SecureChatProvider>
   );
@@ -71,6 +71,43 @@ describe("useSecureDevice", () => {
     const persisted = await new SecureChatRepository(store).loadDevice();
     expect(persisted?.deviceId).toBe("dev-x");
     expect(persisted?.device?.id).toBe("row-1");
+  });
+
+  it("persists device state after publishing KeyPackages (so their private keys survive a reload)", async () => {
+    // Regression for the "stuck on ⏳ waiting for key update forever" bug. publishKeyPackages used to
+    // upload the public KeyPackages but never re-persist device state, so the matching PRIVATE keys
+    // (held only in the crypto's in-memory store) were lost on reload — a peer's Welcome built from one
+    // of them then failed "no matching KeyPackage" and the recipient could never join. It must now
+    // re-export + saveDevice AFTER generating the KeyPackages.
+    vi.spyOn(SecureChatRestClient.prototype, "registerDevice").mockResolvedValue(row("row-1", "dev-x"));
+    const crypto = new MockSecureChatCrypto();
+    const store = new MemoryStore();
+    const exportSpy = vi.spyOn(crypto, "exportDeviceState"); // calls through to the real impl
+
+    // autoReplenish off so the only publish is the explicit one below (no proactive top-up noise).
+    const { result } = renderHook(() => useSecureDevice({ deviceId: "dev-x", autoReplenish: false }), {
+      wrapper: wrap(crypto, store),
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => {
+      await result.current.register();
+    });
+
+    const exportsAfterRegister = exportSpy.mock.calls.length; // register persists once
+    await act(async () => {
+      await result.current.publishKeyPackages(5);
+    });
+
+    // publishKeyPackages re-exported device state (the snapshot taken AFTER generateKeyPackages) and
+    // persisted it: the stored device-state bytes equal that latest export.
+    expect(exportSpy.mock.calls.length).toBeGreaterThan(exportsAfterRegister);
+    expect(pubSpy).toHaveBeenCalled();
+    const lastExport = (await exportSpy.mock.results[exportSpy.mock.results.length - 1]!.value) as Uint8Array;
+    const persisted = await new SecureChatRepository(store).loadDevice();
+    expect(persisted?.deviceId).toBe("dev-x");
+    // Compare via Array.from — the base64 round-trip can yield a Buffer vs a plain Uint8Array, which
+    // `toEqual` treats as unequal despite identical bytes.
+    expect(Array.from(persisted!.deviceState)).toEqual(Array.from(lastExport));
   });
 
   it("re-hydrates a persisted device on mount without re-registering", async () => {
@@ -246,7 +283,7 @@ describe("useSecureDevice", () => {
     // persisted device is used and registerDevice is never called.
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <React.StrictMode>
-        <SecureChatProvider crypto={new MockSecureChatCrypto()} projectId="p" store={store} accessToken="t">
+        <SecureChatProvider crypto={new MockSecureChatCrypto()} projectId="p" baseUrl="http://localhost:4000/v7" store={store} accessToken="t">
           {children}
         </SecureChatProvider>
       </React.StrictMode>

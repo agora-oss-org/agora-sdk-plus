@@ -125,6 +125,17 @@ export function useSecureHandshakes(
     const liveBuffer: SecureHandshakeModel[] = [];
     let queue: Promise<void> = Promise.resolve();
     let deviceId: string | undefined;
+    // A Welcome addressed to US that throws is RETRYABLE — not a poison blob. The usual cause is that
+    // its KeyPackage private key isn't in the crypto store yet (device-state rehydration mid-flight),
+    // which clears on the next drain/reload. So we must NOT advance the cursor past it (that would skip
+    // it forever, stranding the recipient on "waiting for key update"). `blocked` holds the cursor for
+    // the rest of THIS drain once we're holding — later rows must not advance past the held Welcome —
+    // and is reset at the start of each runCatchUp so the next drain re-fetches `since=cursor` and
+    // retries. `attempts` bounds per-seq retries so a genuinely-poison for-us Welcome can't wedge the
+    // inbox forever: after the cap we advance (surfaced via onError) like any other skippable row.
+    let blocked = false;
+    const attempts = new Map<string, number>();
+    const MAX_WELCOME_RETRIES = 3;
 
     const report = (err: unknown, h?: SecureHandshakeModel) => {
       if (alive) setError(err);
@@ -190,15 +201,37 @@ export function useSecureHandshakes(
         log.trace("dedupe — already past cursor", { seq: h.seq, cursor: cursorRef.current });
         return;
       }
+      // Holding a retryable for-us Welcome earlier in the stream: don't advance past it this drain (a
+      // later row advancing the cursor would skip the held Welcome on the next catch-up). Resume next.
+      if (blocked) return;
       try {
         await dispatchByKind(h);
       } catch (err) {
-        log.debug("dispatch failed — advancing cursor past poison row", {
+        report(err, h);
+        // A Welcome addressed to us that failed is retryable (see the `blocked`/`attempts` note above):
+        // hold the cursor so the next catch-up re-attempts, up to MAX_WELCOME_RETRIES this session.
+        // Everything else — a Welcome not for us, a Commit for an unknown group, a malformed blob we
+        // can never use — stays skippable so a poison row can't wedge the inbox.
+        const forUsWelcome =
+          h.kind === "welcome" && (!h.targetDeviceId || h.targetDeviceId === deviceId);
+        const tries = (attempts.get(h.seq) ?? 0) + 1;
+        attempts.set(h.seq, tries);
+        if (forUsWelcome && tries < MAX_WELCOME_RETRIES) {
+          blocked = true;
+          log.debug("for-us welcome failed — holding cursor for retry on next catch-up", {
+            seq: h.seq,
+            attempt: tries,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return; // leave the cursor untouched: the next catch-up re-fetches `since=cursor` and retries
+        }
+        log.debug("dispatch failed — advancing cursor past row", {
           seq: h.seq,
           kind: h.kind,
+          forUsWelcome,
+          attempts: tries,
           error: err instanceof Error ? err.message : String(err),
         });
-        report(err, h);
       }
       cursorRef.current = h.seq;
       await repo.saveHandshakeCursor(deviceId!, h.seq);
@@ -233,6 +266,7 @@ export function useSecureHandshakes(
       if (catchUpInFlight) return catchUpInFlight;
       catchUpInFlight = (async () => {
         catchingUpRef.current = true;
+        blocked = false; // a fresh drain re-attempts any for-us Welcome held in a prior drain
         log.debug("catch-up start", { deviceId, fromCursor: cursorRef.current, pageSize });
         let pages = 0;
         let fetched = 0;

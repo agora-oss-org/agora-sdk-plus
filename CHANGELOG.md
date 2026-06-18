@@ -8,6 +8,41 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Added
 
+- **`TESTING.md` — a full map of the test harness.** Documents the unit suite, the two-client hook
+  composition (mock, ts-mls, and browser-runtime variants), the opt-in foundation e2e, and the
+  two-process `chat-diag` diagnostic: what each proves, how to run it, the env it needs, and the
+  **fault-isolation ladder** that localizes a bug to a specific layer (the method behind the "waiting
+  for key update" investigation).
+- **Browser-runtime test (`react-js/src/browser-runtime.test.tsx`).** The last rung of the ladder: the
+  real web wiring — `createWebSecureChatCrypto()` (ts-mls) + `createIndexedDBStore()` (over
+  `fake-indexeddb`, real async latency) + `<React.StrictMode>` (dev mount→cleanup→mount double-invoke) —
+  with two clients through the real hooks. Proves bob registers/joins/decrypts and that a reload (fresh
+  crypto + fresh StrictMode mount on the same IndexedDB) rehydrates the device **without re-registering**.
+  A sanity probe confirms StrictMode genuinely doubles; the flow shows why it's safe (`useSecureHandshakes`
+  gates catch-up on a resolved device id, so the doubled mount never double-processes a Welcome —
+  observed `processWelcome ×1`). Needed a vitest alias for the `@agora-sdk/secure-chat-crypto/ts-mls`
+  subpath (so the web crypto factory resolves to source in tests). Result: the SDK is exhausted across
+  every browser combination; a surviving fault is in the consuming app's wiring (e.g. a non-memoized
+  `crypto`/`store` prop that rebuilds the provider and churns the device).
+- **Two-client hook-orchestration test (`hooks/two-client-handshake.test.tsx`).** Drives BOTH peers
+  through the real `useSecure*` hooks against one shared in-memory fake DS (routed per-caller by bearer
+  token), closing the gap above the transport e2e and the two-process `chat-diag` harness (which both
+  exercise only the stack *below* React). Four cases assert the receive chain that backs the app's
+  "waiting for key update" state: `useSecureHandshakes` drains the Welcome → `rememberGroup` →
+  group-version bump → `useSecureMessages` re-resolves + flushes the previously-`pending` row to
+  decrypted text — across catch-up, live-socket delivery, and the **full `useSecureDevice` stack**
+  (bob self-registers, and the device→handshakes id handoff still joins + decrypts despite the late
+  device id). A companion case characterizes the symptom: without `useSecureHandshakes`, the DM lists
+  but its message stays `pending`/`plaintext:null`. Proves the conversations/handshakes/messages/device
+  orchestration is sound under mock crypto.
+- **ts-mls capstone test (`hooks/two-client-ts-mls.test.tsx`).** The same two-client flow as above but
+  with **real ts-mls crypto** under the real hooks — the only harness that combines real MLS *and* the
+  React hooks for both peers (the e2e/chat-diag run real ts-mls but no React; the mock hook test runs
+  the hooks but mock crypto). Bob registers + publishes real KeyPackages via `useSecureDevice`, alice
+  claims a real one to build the group, and genuine MLS Welcomes/ciphertext flow through the hooks
+  (catch-up + live socket). The fake DS stores/dispenses real KeyPackages. Result: the orchestration
+  holds under real MLS too — exhausting the SDK and narrowing the live two-browser fault to the real
+  browser runtime (StrictMode + IndexedDB in `secure-chat-react-js`) and the consuming app's wiring.
 - **`.env.example` documenting the e2e environment.** Copy to `.env` (gitignored; direnv auto-loads it
   via the repo's `.envrc`) and fill in. Spells out the trap that the `AGORA_E2E_DATABASE_URL` must point
   at the database the **running** agora-server reads (normally its DEV db while `pnpm dev:api` is up) —
@@ -44,6 +79,33 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Fixed
 
+- **Recipient stuck on "⏳ waiting for key update" forever (KeyPackage private keys lost on reload).**
+  `useSecureDevice.publishKeyPackages` generated KeyPackages — whose **private** keys land only in the
+  crypto's in-memory store — and uploaded the public halves, but never re-persisted device state
+  afterward. `register()` persists, but runs *before* any KeyPackages exist. So after a reload,
+  `importDeviceState` rehydrated a device-state snapshot with **no** KeyPackages; a peer who claimed one
+  of the published KeyPackages and built a Welcome from it then hit `processWelcome` →
+  "no matching KeyPackage", and the recipient could never join (every DM opened to them after their
+  reload stayed undecryptable, surviving further reloads). `publishKeyPackages` now re-exports +
+  `saveDevice`s device state immediately after generating KeyPackages, so their private keys are
+  durable. This was invisible to the single-process test harness, which only re-read already-joined
+  history after a reload; a new `react-js/browser-runtime` regression (register → publish → **reload** →
+  receive a *new* Welcome) reproduces it (fails before, passes after), plus a `useSecureDevice` unit test.
+- **A failed *for-us* Welcome no longer permanently strands the recipient (self-heal on retry).**
+  `useSecureHandshakes` advanced and persisted the delivery cursor even when `dispatchByKind` threw —
+  intended as poison-blob protection, but for a Welcome **addressed to this device** it moved the cursor
+  *past* the Welcome, so catch-up's strictly-greater `since=cursor` never re-served it and a single
+  transient `processWelcome` failure stranded the recipient forever. Now a for-us Welcome that throws
+  **holds** the cursor (it is not advanced) so the next catch-up / reload / `resync()` retries, bounded
+  by an in-session retry cap so a genuinely-poison Welcome can't wedge the inbox; genuinely-skippable
+  rows (a Welcome not for us, a Commit for an unknown group) still advance as before. New
+  `useSecureHandshakes` tests cover the hold-then-join and the bounded-skip; the prior "throwing row
+  advances" test now targets a Commit (the still-skippable class).
+- **De-flaked the argon2id backup-envelope test (`ts-mls/backup.test.ts`).** The "emits a real envelope"
+  case asserted the ciphertext, decoded as UTF-8, did `not.toContain("x")` — a non-deterministic check
+  that failed whenever a random ciphertext byte happened to be `0x78`. Replaced with deterministic
+  byte-level assertions: the blob differs from the plaintext bytes and is exactly `plaintext.length + 16`
+  (the appended poly1305 tag). Same intent ("the blob is ciphertext, not plaintext"), no randomness.
 - **Closed the last non-deduped merge path in `useSecureMessages` (React duplicate-key).** 0.6.5 fixed
   the optimistic-send add and the live-receive path to dedup by id, but `load`'s older-page append
   (`loadMore`, pagination) still concatenated unconditionally — so a row already in state (one that
