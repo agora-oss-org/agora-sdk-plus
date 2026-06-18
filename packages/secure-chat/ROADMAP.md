@@ -87,7 +87,12 @@ Both recurring gaps — "persist `privateState`" and "resolve `conversationId �
 - [ ] On `409 secure-chat/epoch-conflict` (membership commits): refetch handshakes, rebase, retry.
       *(deferred — needs a membership-write hook; `useSecureHandshakes` exposes `resync()` as the primitive.)*
 
-### 5. Passphrase backup / restore UX — ✅ done (crypto + hook + meter)
+### 5. Passphrase backup / restore UX — ✅ done (crypto + hook + meter); ⚠️ now **deprecated**
+> **Deprecated 2026-06-18:** the server-passphrase backup path is retired. Recovery is now
+> device-to-device via **IUC** (`docs/superpowers/specs/2026-06-18-iuc-history-restore-design.md`), and
+> local at-rest protection is the new `createEncryptedStore` decorator (§5.5). `exportBackup` /
+> `importBackup` / `PassphraseBackup` carry `@deprecated` tags (no behavior change, no removal yet —
+> full removal also touches agora-server's test devDependency).
 - [x] Real KDF+AEAD envelope: `crypto/src/ts-mls/backup.ts` (`sealBackup`/`openBackup`) — **argon2id**
       (m=64 MiB, t=3, p=1, 32-byte key) + **xchacha20poly1305** (random salt+nonce), envelope
       descriptors bound as AEAD AAD (downgrade/tamper fails closed). The ts-mls core's
@@ -100,6 +105,18 @@ Both recurring gaps — "persist `privateState`" and "resolve `conversationId �
 - [x] The restore-on-new-browser **e2e** leg in `e2e/secure-chat.e2e.ts` (alice backs up → a second
       client with an empty store restores via passphrase → decrypts history). Opt-in (`pnpm test:e2e`,
       needs a running agora-server), runs per crypto variant.
+
+### 5.5 Encryption at rest — ✅ done (Phase 2.5)
+- [x] `EncryptedStore` decorator (`react-js/src/encrypted-store.ts`, `createEncryptedStore`): seals every
+      persisted **value** with AES-256-GCM before delegating to a base `SecureChatStore` (normally
+      `createIndexedDBStore()`). argon2id (reusing `backup.ts`'s RFC 9106 `ARGON2_PARAMS`) → KEK that
+      wraps a random AES-256-GCM **DEK** held only as a **non-extractable** `CryptoKey`; per-value AES-GCM
+      with a fresh CSPRNG nonce (`[version][nonce][ct+tag]`). Adds `unlock`/`lock`/`isLocked`/
+      `changePassword` (re-wraps the same DEK — no bulk re-encryption) + `StoreLockedError`. The AEAD
+      unlock IS the password check (no stored hash). Fails closed everywhere; the repository/provider/
+      hooks are untouched. Design: `docs/superpowers/specs/2026-06-18-encryption-at-rest-design.md`.
+- [ ] **Later:** encrypt store *keys*/metadata (close the conversation-id/message-count leak); RAM-cache
+      purge on `lock()` + auto-lock idle timer; native (RN/Expo) keystore-backed at-rest.
 
 ### 6. Metadata hardening — ✅ done *(was optional, Phase 2+)*
 - [x] Client-side ciphertext **size-bucket padding** (blunts traffic-shape fingerprinting; pairs with

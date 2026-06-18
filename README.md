@@ -54,6 +54,32 @@ const store = useMemo(() => createIndexedDBStore(), []);
 </SecureChatProvider>
 ```
 
+### Encryption at rest (optional)
+
+The base `createIndexedDBStore()` writes **plaintext** to IndexedDB (the blind server still never sees
+it, but anyone with disk or same-origin access can). Wrap it with `createEncryptedStore` to seal every
+persisted **value** — MLS group/ratchet secrets, the device signing key, decrypted message history,
+cursors — at rest under a password-derived key (argon2id → KEK → non-extractable AES-256-GCM DEK).
+**Call `unlock(password)` before mounting the provider**, and `lock()` on logout/idle:
+
+```tsx
+import { createEncryptedStore, createIndexedDBStore } from "@agora-sdk/secure-chat-react-js";
+
+const store = useMemo(() => createEncryptedStore(createIndexedDBStore()), []);
+await store.unlock(userPassword);   // first use mints the DEK; later opens unwrap it. MUST precede mount.
+
+<SecureChatProvider store={store} /* …same props as above… */ >…</SecureChatProvider>
+
+store.lock();                       // drop the in-memory DEK (disk-lock; see the scope note below)
+```
+
+Fails closed everywhere: while locked, every store op throws `StoreLockedError`; a wrong password or a
+tampered value throws a generic error and never yields raw bytes. **Scope (v1):** store *values* are
+sealed; *keys* still pass through in the clear (they leak conversation ids + message counts the server
+already sees), and `lock()` is a disk-lock — it drops the store's key but does not purge plaintext
+already cached in the provider/crypto memory. Full details + threat model:
+[`docs/superpowers/specs/2026-06-18-encryption-at-rest-design.md`](docs/superpowers/specs/2026-06-18-encryption-at-rest-design.md).
+
 ## Develop
 
 ```bash
