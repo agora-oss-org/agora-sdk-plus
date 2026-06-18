@@ -38,6 +38,14 @@ All notable changes to Agora SDK Plus are documented here, following
   children with the same React `key`. The append now filters out ids already present (the `reset`
   reload replaces wholesale and can't duplicate), bringing all three merge paths — load, live-receive,
   optimistic-send — to the same by-id dedup invariant: exactly one row per id.
+- **Silenced the leaked stderr `Error:` dumps from the two "used outside its provider" negative tests**
+  (`social-context.test.tsx`, `secure-chat-context.test.tsx`). The tests assert that `useSocial` /
+  `useSecureChat` throw when rendered with no provider and already mocked `console.error`, but the throw
+  still spammed stderr: React 18's dev build re-dispatches a render-time throw onto a detached DOM node,
+  and jsdom catches it and reports via its `jsdomError` virtual-console channel — separate from
+  `console.error`. Each test now also installs a one-shot `window` `error` listener that calls
+  `preventDefault()` (jsdom's `reportException` honors `defaultPrevented`), so the suite output is clean.
+  No production code changed; the assertions are unchanged.
 
 ## [0.6.5] — 2026-06-17
 

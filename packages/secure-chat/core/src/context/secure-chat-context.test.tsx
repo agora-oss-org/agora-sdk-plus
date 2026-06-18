@@ -53,12 +53,19 @@ describe("SecureChatProvider persistence wiring", () => {
   });
 
   it("throws when useSecureChat is used outside the provider", () => {
-    // React also dumps the (expected) render-time throw to console.error with an error-boundary
-    // suggestion; swallow it for this one negative case so the throw we assert doesn't spam stderr.
+    // Suppress the two channels React 18's dev build uses to surface the (expected) render-time
+    // throw, so this negative case stays quiet:
+    //  1. console.error — React's "The above error occurred" boundary suggestion.
+    //  2. The window "error" event — React re-dispatches the throw onto a detached node, jsdom
+    //     catches it and reports via its `jsdomError` virtual-console channel (NOT console.error).
+    //     jsdom's reportException honors defaultPrevented, so a preventDefault listener silences it.
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const swallowError = (event: ErrorEvent) => event.preventDefault();
+    window.addEventListener("error", swallowError);
     try {
       expect(() => renderHook(() => useSecureChat())).toThrow(/within a <SecureChatProvider>/);
     } finally {
+      window.removeEventListener("error", swallowError);
       errSpy.mockRestore();
     }
   });
