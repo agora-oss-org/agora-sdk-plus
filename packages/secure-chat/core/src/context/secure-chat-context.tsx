@@ -18,6 +18,9 @@ import { SecureChatStore } from "../persistence/store.js";
 import { MemoryStore } from "../persistence/memory-store.js";
 import { SecureChatRepository } from "../persistence/repository.js";
 import { PaddingPolicy } from "../util/padding.js";
+import { createDebugLogger } from "../util/debug.js";
+
+const log = createDebugLogger("provider");
 
 /**
  * The value exposed by {@link useSecureChat}: shared transport clients, the injected crypto, the
@@ -36,6 +39,15 @@ export interface SecureChatContextValue {
   resolveGroup: (conversationId: string) => Promise<GroupHandle | null>;
   /** Cache + persist a conversation's group handle (after createGroup / processWelcome). */
   rememberGroup: (conversationId: string, handle: GroupHandle) => Promise<void>;
+  /**
+   * Persist a conversation's CURRENT group state after an intra-epoch ratchet advance — i.e. an
+   * application message we just sent or received. Unlike {@link rememberGroup} it does NOT bump the
+   * version or notify listeners: an application message moves the (single-use, forward-secret) MLS
+   * ratchet but NOT the epoch, so consumers must not re-resolve the handle. Skipping this persist is
+   * the resend-replay bug — on reload the send ratchet rewinds to a consumed generation and the peer
+   * rejects the next message as a replay.
+   */
+  persistGroupState: (conversationId: string, handle: GroupHandle) => Promise<void>;
   /**
    * Current change-version for a conversation's group handle. Bumps every time the handle advances
    * (a join or a processed Commit), so consumers can detect "the group moved" without diffing handles.
@@ -162,10 +174,32 @@ export function SecureChatProvider({
       const cached = groupCache.current.get(conversationId);
       if (cached) return cached;
       const bytes = await repo.loadGroupState(conversationId);
-      if (!bytes) return null;
-      const handle = await crypto.importGroupState(bytes);
-      groupCache.current.set(conversationId, handle);
-      return handle;
+      if (!bytes) {
+        // No persisted group for this conversation: the recipient never joined (no Welcome processed),
+        // or local state was wiped. Renders as "waiting for key update" until a Welcome arrives.
+        log.debug("resolveGroup: no persisted group state", { conversationId });
+        return null;
+      }
+      try {
+        const handle = await crypto.importGroupState(bytes);
+        groupCache.current.set(conversationId, handle);
+        log.debug("resolveGroup: imported group from store", {
+          conversationId,
+          epoch: handle.epoch.toString(),
+          bytes: bytes.length,
+        });
+        return handle;
+      } catch (err) {
+        // A persisted group that can't be re-imported is a black hole — it silently degrades to "no
+        // group" (a permanent "waiting for key update"). Surface it loudly so a reload-persistence or
+        // crypto-version-skew problem is visible instead of looking like an un-joined conversation.
+        log.debug("resolveGroup: importGroupState FAILED — group present but unreadable", {
+          conversationId,
+          bytes: bytes.length,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
     },
     [repo, crypto]
   );
@@ -178,6 +212,21 @@ export function SecureChatProvider({
       // Signal that this conversation's group advanced, so message hooks re-resolve + flush.
       groupVersion.current.set(conversationId, (groupVersion.current.get(conversationId) ?? 0) + 1);
       groupListeners.current.forEach((l) => l());
+    },
+    [repo, crypto]
+  );
+
+  const persistGroupState = useCallback(
+    async (conversationId: string, handle: GroupHandle): Promise<void> => {
+      // Re-export the now-advanced ratchet for THIS group and overwrite the persisted blob. The
+      // ratchet state lives in the crypto's internal per-group map (keyed by mlsGroupId), so exporting
+      // the same handle after a send/receive captures the advanced generation. Deliberately NO version
+      // bump and NO listener notify (cf. rememberGroup): an application message is intra-epoch, so a
+      // re-resolve would be wasted work and could churn buffered-row retries. The cache holds the same
+      // handle object the hook already uses, so re-setting it is idempotent.
+      groupCache.current.set(conversationId, handle);
+      const bytes = await crypto.exportGroupState(handle);
+      await repo.saveGroupState(conversationId, bytes);
     },
     [repo, crypto]
   );
@@ -206,6 +255,7 @@ export function SecureChatProvider({
       repo,
       resolveGroup,
       rememberGroup,
+      persistGroupState,
       getGroupVersion,
       subscribeGroupChange,
       padding,
@@ -218,6 +268,7 @@ export function SecureChatProvider({
       repo,
       resolveGroup,
       rememberGroup,
+      persistGroupState,
       getGroupVersion,
       subscribeGroupChange,
       padding,

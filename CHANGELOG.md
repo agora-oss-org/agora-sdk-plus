@@ -8,6 +8,16 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Added
 
+- **Durable decrypt-once message store (local plaintext history).** `SecureChatRepository` gains
+  `saveMessagePlaintext` / `loadMessagePlaintext` (keyed `msg:<conversationId>:<messageId>`) over the
+  existing `SecureChatStore` seam. `useSecureMessages` now write-throughs every successful decode (and
+  our own sends) to it and serves already-seen ids from the store *before* touching the MLS ratchet —
+  the principled fix for forward-secret history: MLS application keys are single-use, so a message can
+  be decrypted exactly once and re-decrypting a consumed generation throws `"Desired gen in the past"`.
+  Conversation history therefore lives on-device and survives reload without ever replaying the ratchet.
+  Plaintext at rest here is **local-only** (the blind server never sees it); on-disk encryption-at-rest
+  is a future drop-in `SecureChatStore` implementation (the repository/hooks are untouched by it).
+
 - **`TESTING.md` — a full map of the test harness.** Documents the unit suite, the two-client hook
   composition (mock, ts-mls, and browser-runtime variants), the opt-in foundation e2e, and the
   two-process `chat-diag` diagnostic: what each proves, how to run it, the env it needs, and the
@@ -50,6 +60,12 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Changed
 
+- **MLS group state is now persisted after every send and receive, not just on join/Commit.** Added a
+  quiet `persistGroupState(conversationId, handle)` to `SecureChatProvider` (re-exports + saves the
+  current ratchet WITHOUT a version bump or listener notify, since an application message is
+  intra-epoch). `useSecureMessages` calls it right after `encryptMessage` (before the network send) and
+  after every successful `decryptMessage`. The ratchet advances in memory on each application message,
+  so this keeps the persisted state in lock-step — see the resend-replay fix below.
 - **BREAKING: dropped the `@agora-sdk/core` dependency — secure-chat and social are now standalone;
   `baseUrl` is a required provider prop.** Both feature groups used `@agora-sdk/core` for exactly one
   thing: the `getApiBaseUrl`/`getSocketUrl` runtime-singleton fallback, which let a provider auto-inherit
@@ -91,6 +107,33 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Fixed
 
+- **A message sent after reload was rejected by the peer as a replay (`"Desired gen in the past"`).**
+  An MLS application message advances the leaf's single-use **send ratchet**, but the SDK only persisted
+  group state on join/Commit — never after a send. So on reload the SDK re-imported the pre-send state,
+  the send ratchet rewound to an already-consumed generation, and the next message reused a generation
+  the peer had already seen → the peer's secret-tree refused it as a replay (surfacing in the demo as
+  "⚠️ couldn't be verified (replay)"). Fixed by persisting group state after every send/receive (see
+  *Changed*) and by decrypting each message exactly once into the durable plaintext store (see *Added*),
+  so own/peer history renders from the store instead of replaying the consumed ratchet. Regression
+  covered end-to-end with real ts-mls + IndexedDB in `react-js/src/browser-runtime.test.tsx` (Alice
+  reloads, sends again, Bob decrypts `ok`; Alice's own history restores from the store without
+  re-decrypting). Forward secrecy is preserved — each message's key is still consumed exactly once.
+- **Message stuck on "⏳ waiting for key update" even though its group had resolved.** `useSecureMessages`
+  decrypted against a `group` captured in its closure, so a message page whose fetch finished *after*
+  `resolveGroup` succeeded decrypted against the stale `null` and stranded as `pending` — and nothing
+  re-triggered it (the retry effect fires on a `group` *change*, which had already happened while the
+  list was empty). Compounding it, MLS application-message keys are single-use (forward secrecy), yet
+  the hook decrypts the same message from several effects (load, retry, live echo) that React StrictMode
+  double-invokes — so the one-time key could be consumed on a run whose result was then discarded. Fixes:
+  (1) `decrypt` reads the **live group via a ref**, so a late-finishing load decrypts with the current
+  handle; (2) a **decrypt-once cache** (by message id) returns the single successful decode to every
+  later caller, so the forward-secret key is consumed exactly once and never lost on a discarded/double
+  invocation; (3) both merge paths (live-receive, older-page load) keep the more-resolved copy via a
+  `preferResolved` helper — a successful `ok` is never overwritten by a later failed re-attempt; a row's
+  status may only improve. Three regression tests: a late-finishing load still decrypts; a live message
+  UPGRADES a row that resolved to `rejected`; the row stays a single React key. Also added a `provider`
+  debug log (`resolveGroup`: no-state / imported / import-FAILED) so a group that's persisted-but-
+  unreadable is visible instead of silently degrading to "waiting for key update".
 - **Recipient stuck on "⏳ waiting for key update" forever (KeyPackage private keys lost on reload).**
   `useSecureDevice.publishKeyPackages` generated KeyPackages — whose **private** keys land only in the
   crypto's in-memory store — and uploaded the public halves, but never re-persisted device state

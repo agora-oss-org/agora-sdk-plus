@@ -393,6 +393,95 @@ describe("browser runtime: StrictMode + IndexedDB + real ts-mls under the hooks"
     bob2.unmount();
   }, SLOW);
 
+  it("resend after Alice reloads is NOT rejected as replay; her own history restores from the store", async () => {
+    // THE forward-secrecy bug, end to end (image: B shows "⚠️ couldn't be verified (replay)" after A
+    // reloads and sends again). Root cause: an application message advances the SINGLE-USE send ratchet
+    // in memory, but the SDK only persisted group state on join/Commit — so a reload re-imported the
+    // pre-send state, rewound the send ratchet to a consumed generation, and the next message reused a
+    // gen the peer had already seen → ts-mls "Desired gen in the past" → rejected as a replay.
+    //
+    // The fix persists group state after every send/receive AND decrypts each message once into a local
+    // plaintext store. This test proves BOTH: (A) Bob decrypts Alice's post-reload message, and (B)
+    // Alice's own history (which she can't re-decrypt — single-use keys) restores from the store without
+    // ever re-running the MLS decrypt.
+    const M1 = "hi my bad bitch!";
+    const M2 = "please work";
+
+    // Bob: full stack on IndexedDB; registers, publishes, will join + receive.
+    const bobCrypto = createWebSecureChatCrypto();
+    const bobStore = freshIdbStore();
+    const bob = renderHook(bobFullStack, {
+      wrapper: strictWrap(bobCrypto, bobStore, BOB_TOKEN),
+      initialProps: { convId: "" },
+    });
+    await waitFor(() => expect(bob.result.current.dev.loading).toBe(false), WAIT);
+    await act(async () => { await bob.result.current.dev.register(); });
+    await waitFor(() => expect(bob.result.current.dev.device).not.toBeNull(), WAIT);
+    await act(async () => { await bob.result.current.dev.publishKeyPackages(3); });
+
+    // Alice: on a DURABLE store, so a "reload" re-imports the ratchet as it stood AFTER she sent M1.
+    const aliceCrypto = createWebSecureChatCrypto();
+    await aliceCrypto.generateDeviceIdentity({ deviceId: aliceRow.deviceId });
+    const aliceStore = freshIdbStore();
+    await seedDevice(aliceStore, aliceRow, await aliceCrypto.exportDeviceState());
+
+    // Alice starts the DM and sends M1 through her hooks (the send now persists the advanced ratchet).
+    const aliceWrap = plainWrap(aliceCrypto, aliceStore, ALICE_TOKEN);
+    const convs = renderHook(() => useSecureConversations(), { wrapper: aliceWrap });
+    let conversationId = "";
+    await act(async () => { conversationId = (await convs.result.current.createDirectConversation("bob")).id; });
+    convs.unmount();
+
+    const aliceGroup1 = await aliceCrypto.importGroupState((await aliceStore.get(`group:${conversationId}`))!);
+    const msgs1 = renderHook(
+      () => useSecureMessages(conversationId, { group: aliceGroup1, senderDeviceId: aliceRow.id }),
+      { wrapper: aliceWrap }
+    );
+    await act(async () => { await msgs1.result.current.sendMessage(M1); });
+    msgs1.unmount();
+
+    // Bob joins and decrypts M1.
+    await waitFor(() => expect(bob.result.current.convs.conversations.map((c) => c.id)).toContain(conversationId), WAIT);
+    bob.rerender({ convId: conversationId });
+    await waitFor(() => {
+      const m = bob.result.current.msgs.messages.find((x) => x.plaintext === M1);
+      expect(m?.status).toBe("ok");
+    }, WAIT);
+
+    // ── Alice "reloads": a FRESH crypto instance over the SAME store. Re-import the persisted group
+    // state (which, thanks to the fix, reflects the post-M1 ratchet — NOT the rewound pre-send state). ──
+    const aliceCrypto2 = createWebSecureChatCrypto();
+    const decryptSpy2 = vi.spyOn(aliceCrypto2, "decryptMessage");
+    const aliceGroup2 = await aliceCrypto2.importGroupState((await aliceStore.get(`group:${conversationId}`))!);
+    const aliceWrap2 = plainWrap(aliceCrypto2, aliceStore, ALICE_TOKEN);
+    const msgs2 = renderHook(
+      () => useSecureMessages(conversationId, { group: aliceGroup2, senderDeviceId: aliceRow.id }),
+      { wrapper: aliceWrap2 }
+    );
+
+    // (B) Alice's own M1 renders `ok` AFTER reload — she can't decrypt her own single-use message, so it
+    // can only come from the local plaintext store. Prove the ratchet was never touched for it.
+    await waitFor(() => {
+      const m = msgs2.result.current.messages.find((x) => x.model.conversationId === conversationId && x.plaintext === M1);
+      expect(m?.status).toBe("ok");
+    }, WAIT);
+    expect(decryptSpy2).not.toHaveBeenCalled(); // served from store, ratchet untouched
+
+    // (A) Alice sends M2 after the reload. Before the fix this reused M1's consumed generation.
+    await act(async () => { await msgs2.result.current.sendMessage(M2); });
+
+    // The decisive assertion: Bob decrypts M2 as `ok` — NOT rejected as a replay.
+    await waitFor(() => {
+      const m = bob.result.current.msgs.messages.find((x) => x.plaintext === M2);
+      expect(m?.status).toBe("ok");
+    }, WAIT);
+    // And Bob never marked M2 (or anything) as a replay/rejected.
+    expect(bob.result.current.msgs.messages.some((m) => m.status === "rejected")).toBe(false);
+
+    msgs2.unmount();
+    bob.unmount();
+  }, SLOW);
+
   it("recipient who registered+published, then RELOADED before any DM, still joins a NEW Welcome", async () => {
     // THE reported two-browser bug, end to end. Bob registers + publishes KeyPackages, then reloads
     // BEFORE any DM arrives. A fresh crypto instance must rehydrate those KeyPackages' PRIVATE keys from

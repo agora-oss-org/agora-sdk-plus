@@ -74,6 +74,116 @@ describe("useSecureMessages", () => {
     expect(result.current.messages[0]?.plaintext).toBe("hi");
   });
 
+  it("a live message UPGRADES a row that resolved to rejected — never drops a successful decrypt", async () => {
+    // Regression for the demo's "first message stuck on ⏳ waiting for key update". A message can be
+    // loaded/retried into a NON-ok state (here `rejected`) before the one live delivery that actually
+    // decrypts it arrives. MLS application keys are single-use (forward secrecy), so that live decode
+    // is the ONLY one that will ever succeed — the old live-receive dedup ("id already present → keep
+    // the existing row") threw it away, stranding the message. The retry effect can't help: it only
+    // re-tries `pending` rows, never `rejected`. So this is deterministic — only the live upgrade can
+    // rescue it.
+    const creator = new MockSecureChatCrypto();
+    await creator.generateDeviceIdentity({ deviceId: "alice" });
+    const { group: cgroup, welcomes } = await creator.createGroup({
+      initialMembers: [{ deviceId: "row-1", keyPackage: new Uint8Array() }],
+    });
+    const { ciphertext, epoch } = await creator.encryptMessage(
+      cgroup,
+      padPlaintext(new TextEncoder().encode("hello"))
+    );
+
+    // The recipient crypto: decryptMessage throws while `armed` (simulating the row first resolving to
+    // rejected), then succeeds once disarmed (the live delivery that actually decodes).
+    class ArmableCrypto extends MockSecureChatCrypto {
+      armed = true;
+      override async decryptMessage(g: Parameters<MockSecureChatCrypto["decryptMessage"]>[0], ct: Uint8Array) {
+        if (this.armed) throw new Error("decrypt failed (armed)");
+        return super.decryptMessage(g, ct);
+      }
+    }
+    const crypto = new ArmableCrypto();
+    const recipientGroup = await crypto.processWelcome(welcomes.find((w) => w.targetDeviceId === "row-1")!.payload);
+    const store = new MemoryStore();
+    const repo = new SecureChatRepository(store);
+    await repo.saveGroupState("conv-1", await crypto.exportGroupState(recipientGroup));
+    // Dummy device-state bytes: this test only RECEIVES, so senderDeviceId is irrelevant and the
+    // recipient crypto never minted an identity to export.
+    await repo.saveDevice({ deviceId: "me", deviceState: new Uint8Array([1]), device: row });
+
+    const msg: SecureMessageModel = {
+      id: "m1", projectId: "p", conversationId: "conv-1", senderUserId: "alice", senderDeviceId: "alice-row",
+      epoch: epoch.toString(), ciphertext: toBase64(ciphertext), contentType: "text/plain", createdAt: "",
+    };
+    vi.spyOn(SecureChatRestClient.prototype, "listMessages").mockResolvedValue({ messages: [msg], hasMore: false });
+    const handlers: Record<string, (m: SecureMessageModel) => void> = {};
+    vi.spyOn(SecureChatSocketClient.prototype, "on").mockImplementation(((event: string, h: (m: SecureMessageModel) => void) => {
+      handlers[event] = h;
+      return () => { delete handlers[event]; };
+    }) as never);
+
+    const { result } = renderHook(() => useSecureMessages("conv-1"), { wrapper: wrap(crypto, store) });
+    // Settles to `rejected` (load — or its retry — decrypts while armed). The retry won't touch it again.
+    await waitFor(() => expect(result.current.messages.find((m) => m.model.id === "m1")?.status).toBe("rejected"));
+
+    // The single live delivery that actually decodes arrives.
+    crypto.armed = false;
+    await act(async () => {
+      handlers["secure:message"]!(msg);
+    });
+
+    // It must UPGRADE the rejected row to ok — not be discarded as a duplicate.
+    await waitFor(() => {
+      const m = result.current.messages.find((x) => x.model.id === "m1");
+      expect(m?.status).toBe("ok");
+      expect(m?.plaintext).toBe("hello");
+    });
+    // Still exactly one row for that id (the upgrade replaced in place, no duplicate React key).
+    expect(result.current.messages.filter((x) => x.model.id === "m1")).toHaveLength(1);
+  });
+
+  it("decrypts a message whose load finishes AFTER the group resolves (live group, not a stale closure)", async () => {
+    // The exact demo bug: on a fresh page load the message fetch is in flight while resolveGroup is
+    // still running, so the load's `decrypt` closure captured `group = null`. If the fetch then
+    // finishes AFTER the group resolved, the old code left the row `pending` forever — the retry effect
+    // had already fired (on the group change, while the list was empty) and nothing re-triggered it.
+    // `decrypt` now reads the LIVE group via a ref, so a late-finishing load still decrypts.
+    const creator = new MockSecureChatCrypto();
+    await creator.generateDeviceIdentity({ deviceId: "alice" });
+    const { group: cgroup, welcomes } = await creator.createGroup({
+      initialMembers: [{ deviceId: "row-1", keyPackage: new Uint8Array() }],
+    });
+    const { ciphertext, epoch } = await creator.encryptMessage(
+      cgroup,
+      padPlaintext(new TextEncoder().encode("hello"))
+    );
+
+    const crypto = new MockSecureChatCrypto();
+    const recipientGroup = await crypto.processWelcome(welcomes.find((w) => w.targetDeviceId === "row-1")!.payload);
+    const store = new MemoryStore();
+    const repo = new SecureChatRepository(store);
+    await repo.saveGroupState("conv-1", await crypto.exportGroupState(recipientGroup));
+    await repo.saveDevice({ deviceId: "me", deviceState: new Uint8Array([1]), device: row });
+
+    const msg: SecureMessageModel = {
+      id: "m1", projectId: "p", conversationId: "conv-1", senderUserId: "alice", senderDeviceId: "alice-row",
+      epoch: epoch.toString(), ciphertext: toBase64(ciphertext), contentType: "text/plain", createdAt: "",
+    };
+    // Delay the message fetch so the (fast) resolveGroup wins the race — the load's decrypt then runs
+    // with the group ALREADY set, the scenario the stale-closure bug mishandled.
+    vi.spyOn(SecureChatRestClient.prototype, "listMessages").mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 25));
+      return { messages: [msg], hasMore: false };
+    });
+
+    const { result } = renderHook(() => useSecureMessages("conv-1"), { wrapper: wrap(crypto, store) });
+
+    await waitFor(() => {
+      const m = result.current.messages.find((x) => x.model.id === "m1");
+      expect(m?.status).toBe("ok");
+      expect(m?.plaintext).toBe("hello");
+    });
+  });
+
   it("survives a reload end-to-end: a fresh crypto re-hydrates identity + group from the store", async () => {
     // ── Session 1 (before reload): create identity + group, encrypt a message, persist the bytes.
     const before = new MockSecureChatCrypto();
@@ -284,6 +394,90 @@ describe("useSecureMessages — own-message echo de-dup", () => {
     expect(matches).toHaveLength(1);
     expect(matches[0].status).toBe("ok");
     expect(matches[0].plaintext).toBe("hi");
+  });
+});
+
+describe("useSecureMessages — durable decrypt-once store + persist-after-mutation", () => {
+  const enc = (s: string) => new TextEncoder().encode(s);
+
+  async function seed() {
+    const crypto = new MockSecureChatCrypto();
+    await crypto.generateDeviceIdentity({ deviceId: "me" });
+    const { group } = await crypto.createGroup({ initialMembers: [] });
+    const store = new MemoryStore();
+    const repo = new SecureChatRepository(store);
+    await repo.saveGroupState("conv-1", await crypto.exportGroupState(group));
+    await repo.saveDevice({ deviceId: "me", deviceState: await crypto.exportDeviceState(), device: row });
+    return { crypto, store, repo, group };
+  }
+
+  it("persists the advanced send ratchet AND our own plaintext after sendMessage", async () => {
+    const { crypto, store, repo } = await seed();
+    // Spy the provider's saveGroupState (persistGroupState writes through it) and the plaintext store.
+    const saveGroup = vi.spyOn(SecureChatRepository.prototype, "saveGroupState");
+    const savePlain = vi.spyOn(SecureChatRepository.prototype, "saveMessagePlaintext");
+    vi.spyOn(SecureChatRestClient.prototype, "sendMessage").mockImplementation(
+      async (_c, body): Promise<SecureMessageModel> => ({
+        id: "m-sent", projectId: "p", conversationId: "conv-1", senderUserId: "u", senderDeviceId: "row-1",
+        epoch: "0", ciphertext: body.ciphertext, contentType: "text/plain", createdAt: "",
+      })
+    );
+
+    const { result } = renderHook(() => useSecureMessages("conv-1"), { wrapper: wrap(crypto, store) });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    saveGroup.mockClear();
+    await waitFor(async () => {
+      await result.current.sendMessage("please work");
+    });
+
+    // The send ratchet advanced and was persisted (no rewind → no resend-replay on reload). Match on
+    // the conversation id + a non-empty byte payload — NOT expect.any(Uint8Array), which compares
+    // `instanceof` across realms (the crypto package's Node Uint8Array vs. this jsdom file's global).
+    expect(saveGroup.mock.calls.some((c) => c[0] === "conv-1" && (c[1] as ArrayLike<number>).length > 0)).toBe(true);
+    // Our own plaintext was persisted under the sent message's id so reload renders it.
+    expect(savePlain).toHaveBeenCalledWith("conv-1", "m-sent", "please work");
+    expect(await repo.loadMessagePlaintext("conv-1", "m-sent")).toBe("please work");
+  });
+
+  it("serves an already-stored message from the plaintext store WITHOUT touching the ratchet", async () => {
+    const { crypto, store, repo } = await seed();
+    // Pre-seed the durable store as if this message was decoded in a prior session.
+    await repo.saveMessagePlaintext("conv-1", "m-old", "decoded last session");
+    const decryptSpy = vi.spyOn(crypto, "decryptMessage");
+    vi.spyOn(SecureChatRestClient.prototype, "listMessages").mockResolvedValue({
+      messages: [{
+        id: "m-old", projectId: "p", conversationId: "conv-1", senderUserId: "u", senderDeviceId: "peer",
+        epoch: "0", ciphertext: toBase64(enc("opaque")), contentType: "text/plain", createdAt: "",
+      }],
+      hasMore: false,
+    });
+
+    const { result } = renderHook(() => useSecureMessages("conv-1"), { wrapper: wrap(crypto, store) });
+    await waitFor(() => expect(result.current.messages[0]?.plaintext).toBe("decoded last session"));
+    // Forward secrecy: re-decrypting a consumed key would throw — so the store hit MUST avoid it.
+    expect(decryptSpy).not.toHaveBeenCalled();
+  });
+
+  it("write-throughs plaintext and persists the receive ratchet on a fresh decrypt", async () => {
+    const { crypto, store, repo } = await seed();
+    vi.spyOn(crypto, "decryptMessage").mockResolvedValue({
+      plaintext: padPlaintext(enc("fresh decode")), senderDeviceId: "peer", epoch: 0n,
+    });
+    const saveGroup = vi.spyOn(SecureChatRepository.prototype, "saveGroupState");
+    vi.spyOn(SecureChatRestClient.prototype, "listMessages").mockResolvedValue({
+      messages: [{
+        id: "m-new", projectId: "p", conversationId: "conv-1", senderUserId: "u", senderDeviceId: "peer",
+        epoch: "0", ciphertext: toBase64(enc("opaque")), contentType: "text/plain", createdAt: "",
+      }],
+      hasMore: false,
+    });
+
+    const { result } = renderHook(() => useSecureMessages("conv-1"), { wrapper: wrap(crypto, store) });
+    await waitFor(() => expect(result.current.messages[0]?.plaintext).toBe("fresh decode"));
+    // Plaintext written through for next-reload history.
+    expect(await repo.loadMessagePlaintext("conv-1", "m-new")).toBe("fresh decode");
+    // Advanced receive ratchet persisted (conversation id + non-empty payload; see note above re realms).
+    expect(saveGroup.mock.calls.some((c) => c[0] === "conv-1" && (c[1] as ArrayLike<number>).length > 0)).toBe(true);
   });
 });
 

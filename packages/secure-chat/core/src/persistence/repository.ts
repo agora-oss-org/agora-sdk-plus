@@ -16,6 +16,12 @@ const GROUP_PREFIX = "group:";
 // and receives its own Welcome. A global key let a stale cursor outlive its device and mask the
 // Welcome whose `seq` it had already passed (the handshakes query is strictly `seq > since`).
 const CURSOR_PREFIX = "handshake:cursor:";
+// Decrypted message plaintext, keyed `msg:<conversationId>:<messageId>` (messageId is a globally-
+// unique server uuid). This is the durable conversation history: MLS application keys are single-use
+// (forward secrecy), so a message can be decrypted exactly once — we persist that one plaintext so
+// reload renders history from the store instead of replaying the (consumed) ratchet. Plaintext at
+// rest here is LOCAL ONLY; the blind server never sees it. See store.ts for the at-rest posture.
+const MESSAGE_PREFIX = "msg:";
 
 /** The persisted device record: stable id, opaque crypto device-state, and the server row. */
 export interface PersistedDevice {
@@ -79,6 +85,37 @@ export class SecureChatRepository {
   async listGroupConversationIds(): Promise<string[]> {
     const keys = await this.store.list(GROUP_PREFIX);
     return keys.map((k) => k.slice(GROUP_PREFIX.length));
+  }
+
+  /**
+   * Persist the decrypted plaintext of a message (local-only, decrypt-once history).
+   *
+   * Called after a message is successfully decrypted (or, for our own sends, the known plaintext).
+   * The single-use MLS key is consumed by that one decrypt, so this stored copy — not the ratchet —
+   * is what renders the message on every later reload. The blind server never receives this; it lives
+   * only in the platform store (web: IndexedDB; tests: MemoryStore).
+   *
+   * @param conversationId - The conversation the message belongs to.
+   * @param messageId - The globally-unique server message id.
+   * @param plaintext - The decoded UTF-8 message text.
+   */
+  async saveMessagePlaintext(conversationId: string, messageId: string, plaintext: string): Promise<void> {
+    await this.store.set(MESSAGE_PREFIX + conversationId + ":" + messageId, utf8ToBytes(plaintext));
+  }
+
+  /**
+   * Load a message's previously-decrypted plaintext, or `null` if it was never stored.
+   *
+   * A non-null result lets the decrypt path short-circuit BEFORE touching the MLS ratchet — essential
+   * because re-decrypting would throw `"Desired gen in the past"` (the key is gone after first use).
+   *
+   * @param conversationId - The conversation the message belongs to.
+   * @param messageId - The globally-unique server message id.
+   * @returns The stored UTF-8 plaintext, or `null` on a miss.
+   */
+  async loadMessagePlaintext(conversationId: string, messageId: string): Promise<string | null> {
+    const bytes = await this.store.get(MESSAGE_PREFIX + conversationId + ":" + messageId);
+    return bytes ? bytesToUtf8(bytes) : null;
   }
 
   /** Load this device row's persisted handshake delivery cursor (`seq`), or `null`. */

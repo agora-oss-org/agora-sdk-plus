@@ -58,6 +58,17 @@ describe("SecureChatRepository", () => {
     expect(await repo.loadHandshakeCursor("old-row")).toBe("15"); // the old row is unaffected
   });
 
+  it("round-trips decrypted message plaintext, isolated per conversation", async () => {
+    const repo = new SecureChatRepository(new MemoryStore());
+    expect(await repo.loadMessagePlaintext("c1", "m1")).toBeNull(); // miss → null
+    await repo.saveMessagePlaintext("c1", "m1", "hi my bad bitch! 💜");
+    expect(await repo.loadMessagePlaintext("c1", "m1")).toBe("hi my bad bitch! 💜");
+    // Same message id under a DIFFERENT conversation must not collide.
+    await repo.saveMessagePlaintext("c2", "m1", "other convo");
+    expect(await repo.loadMessagePlaintext("c1", "m1")).toBe("hi my bad bitch! 💜");
+    expect(await repo.loadMessagePlaintext("c2", "m1")).toBe("other convo");
+  });
+
   it("clearAll wipes every key", async () => {
     const store = new MemoryStore();
     const repo = new SecureChatRepository(store);

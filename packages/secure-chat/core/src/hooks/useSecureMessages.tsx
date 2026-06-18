@@ -68,6 +68,31 @@ export interface UseSecureMessagesValues {
 }
 
 /**
+ * Merge two copies of the SAME message (same id) seen via different paths (REST load, retry, live
+ * echo), keeping the more-resolved one. A row's status may only ever IMPROVE.
+ *
+ * This is load-bearing for E2EE correctness, not just de-dup hygiene: MLS application-message keys are
+ * single-use (forward secrecy), so the ONE decrypt attempt that succeeds is the only one that ever
+ * will — that attempt also *consumes* the key, so a later re-attempt necessarily fails. If a message
+ * is loaded as `pending` (group not resolved yet) and then the live echo decrypts it `ok`, naively
+ * "keep the first-seen row" would discard the only successful decryption and strand the message on
+ * "waiting for key update" forever. So `ok` always wins; a failed re-attempt (`pending`/`rejected`)
+ * must never overwrite an `ok`; otherwise keep the existing row (the retry effect handles `pending`).
+ *
+ * @param existing - The row already in state.
+ * @param incoming - A freshly-produced row for the same message id.
+ * @returns Whichever row is more resolved (`ok` \> anything; else `existing`).
+ */
+function preferResolved(
+  existing: DecryptedSecureMessage,
+  incoming: DecryptedSecureMessage
+): DecryptedSecureMessage {
+  if (existing.status === "ok") return existing; // never downgrade a successful decrypt
+  if (incoming.status === "ok") return incoming; // upgrade pending/rejected → ok
+  return existing; // both unresolved: keep existing (a `pending` row is retried by the group effect)
+}
+
+/**
  * Load, decrypt, send, and live-receive messages in one secure conversation.
  *
  * Auto-resolves the MLS group handle (via `resolveGroup`) and the sender device id (from the
@@ -88,8 +113,17 @@ export function useSecureMessages(
   conversationId: string,
   options: UseSecureMessagesOptions = {}
 ): UseSecureMessagesValues {
-  const { rest, crypto, socket, repo, resolveGroup, getGroupVersion, subscribeGroupChange, padding } =
-    useSecureChat();
+  const {
+    rest,
+    crypto,
+    socket,
+    repo,
+    resolveGroup,
+    persistGroupState,
+    getGroupVersion,
+    subscribeGroupChange,
+    padding,
+  } = useSecureChat();
 
   const [messages, setMessages] = useState<DecryptedSecureMessage[]>([]);
   const [before, setBefore] = useState<string | undefined>(undefined);
@@ -109,6 +143,23 @@ export function useSecureMessages(
   const messagesRef = useRef<DecryptedSecureMessage[]>(messages);
   messagesRef.current = messages;
 
+  // `decrypt` reads the LIVE group through this ref, not its closure. A message page that finishes
+  // loading AFTER the group resolves must decrypt with the now-current handle instead of stranding as
+  // `pending` — the load's closure may have captured `group` while it was still null.
+  const groupRef = useRef<GroupHandle | null>(group);
+  groupRef.current = group;
+
+  // Decrypt-once cache, by message id — the in-memory tier of a TWO-tier store. MLS application keys
+  // are SINGLE-USE (forward secrecy): the one decrypt that succeeds consumes the key, so any later
+  // attempt fails (`"Desired gen in the past"`). The hook decrypts the same message from several
+  // effects (load, retry, live echo) and React StrictMode double-invokes them — so without this cache
+  // the key could be consumed on a run whose `ok` result is then discarded, leaving the message
+  // permanently un-decryptable. This cache covers within-session repeats; `decrypt` ALSO write-throughs
+  // each `ok` to the durable plaintext store (repo.saveMessagePlaintext) so history survives reload
+  // without ever replaying the consumed ratchet. Only `ok` is cached (terminal); `pending`/`rejected`
+  // stay retryable. Ids are globally-unique server uuids, so this never needs clearing per-conversation.
+  const okCache = useRef(new Map<string, DecryptedSecureMessage>());
+
   // Subscribe to provider group-change signals; only a change to OUR conversation's version updates
   // state (React bails on an unchanged primitive), so unrelated conversations don't re-resolve us.
   useEffect(() => {
@@ -127,10 +178,21 @@ export function useSecureMessages(
     let alive = true;
     resolveGroup(conversationId)
       .then((g) => {
-        if (alive) setGroup(g);
+        if (alive) {
+          setGroup(g);
+          log.debug("group handle set in messages hook", {
+            conversationId,
+            resolved: !!g,
+            epoch: g?.epoch?.toString(),
+          });
+        }
       })
-      .catch(() => {
+      .catch((err) => {
         if (alive) setGroup(null);
+        log.debug("group resolve failed in messages hook", {
+          conversationId,
+          error: err instanceof Error ? err.message : String(err),
+        });
       });
     return () => {
       alive = false;
@@ -160,6 +222,23 @@ export function useSecureMessages(
 
   const decrypt = useCallback(
     async (model: SecureMessageModel): Promise<DecryptedSecureMessage> => {
+      // Decrypt-once (in-memory tier): a message decoded earlier this session is returned from cache —
+      // never re-run the MLS decrypt (its single-use key is already consumed; a second attempt fails).
+      const cached = okCache.current.get(model.id);
+      if (cached) return cached;
+      // Decrypt-once (durable tier): a message decoded in a PRIOR session is served from the local
+      // plaintext store. This is what makes history survive reload — the re-imported ratchet can't
+      // reproduce a consumed key, so re-decrypting would throw "Desired gen in the past". A store hit
+      // therefore must NOT touch the ratchet. (The blind server never sees this plaintext.)
+      const stored = await repo.loadMessagePlaintext(conversationId, model.id);
+      if (stored !== null) {
+        const restored: DecryptedSecureMessage = { model, plaintext: stored, status: "ok" };
+        okCache.current.set(model.id, restored);
+        return restored;
+      }
+      // Read the LIVE group via the ref (not a stale closure): a load that finishes after the group
+      // resolved must decrypt with the now-current handle, not the null it captured when it started.
+      const group = groupRef.current;
       // No handle yet (still resolving) → retryable once it arrives.
       if (!group) {
         log.trace("decrypt deferred — no group handle yet", { messageId: model.id, epoch: model.epoch });
@@ -196,13 +275,23 @@ export function useSecureMessages(
       // size-bucket padding frame (see util/padding). A bad frame here is NOT a decrypt failure — it's a
       // framing/version mismatch from an authenticated sender — so fail closed as "malformed" rather
       // than rendering raw padded bytes as text.
+      let text: string;
       try {
-        return { model, plaintext: bytesToUtf8(unpadPlaintext(plaintext)), status: "ok" };
+        text = bytesToUtf8(unpadPlaintext(plaintext));
       } catch {
         return { model, plaintext: null, status: "rejected", rejectedReason: "malformed" };
       }
+      const ok: DecryptedSecureMessage = { model, plaintext: text, status: "ok" };
+      okCache.current.set(model.id, ok); // cache the (single) successful decode for all later callers
+      // Write-through to the durable store so this decode survives reload, and persist the now-advanced
+      // RECEIVE ratchet: decrypt moved the group's generation in memory, so if we don't persist it a
+      // reload rewinds the ratchet and the next send/receive desyncs. Persist plaintext FIRST — if the
+      // group-state write somehow fails, the message is still recoverable from the plaintext store.
+      await repo.saveMessagePlaintext(conversationId, model.id, text);
+      await persistGroupState(conversationId, group);
+      return ok;
     },
-    [crypto, group]
+    [crypto, repo, conversationId, persistGroupState]
   );
 
   const load = useCallback(
@@ -218,15 +307,22 @@ export function useSecureMessages(
         const oldest = page.messages[page.messages.length - 1];
         setBefore(oldest ? oldest.createdAt : before);
         setHasMore(page.hasMore);
-        // Server returns created_at DESC; keep newest-first in state. Dedup by id when appending an
-        // older page: a row already in state (e.g. one that arrived live, or an overlap at the page
-        // boundary) must not be appended again, or the list would hold two children with the same
-        // React key. `reset` replaces wholesale, so it can't duplicate. Matches the by-id dedup the
-        // live-receive and optimistic-send paths already do.
+        // Server returns created_at DESC; keep newest-first in state. Merge by id when appending an
+        // older page: a row already in state (one that arrived live, or an overlap at the page
+        // boundary) must not be appended twice (duplicate React key) — but if this page decrypted a row
+        // we're still holding as `pending`, UPGRADE it in place rather than dropping the decode (same
+        // forward-secrecy reasoning as the live path). `reset` replaces wholesale.
         setMessages((prev) => {
           if (reset) return decrypted;
-          const seen = new Set(prev.map((p) => p.model.id));
-          return [...prev, ...decrypted.filter((m) => !seen.has(m.model.id))];
+          const indexById = new Map(prev.map((p, idx) => [p.model.id, idx]));
+          const next = prev.slice();
+          const appended: DecryptedSecureMessage[] = [];
+          for (const m of decrypted) {
+            const idx = indexById.get(m.model.id);
+            if (idx === undefined) appended.push(m);
+            else next[idx] = preferResolved(next[idx]!, m);
+          }
+          return [...next, ...appended];
         });
         log.debug("loaded message page", {
           conversationId,
@@ -274,11 +370,21 @@ export function useSecureMessages(
         group,
         padPlaintext(utf8ToBytes(text), padding)
       );
+      // The send ratchet just advanced in memory. Persist NOW — BEFORE the network send — because the
+      // ratchet moved regardless of whether the send succeeds. If we skipped this, a reload would
+      // re-import the last-committed state, rewind the send ratchet to a consumed generation, and the
+      // peer would reject our next message as a replay (the exact bug this fixes). A failed network
+      // send instead leaves at most a one-generation forward gap, which the peer tolerates within its
+      // key-retention window — fail-safe-forward, never a replay.
+      await persistGroupState(conversationId, group);
       const sent = await rest.sendMessage(conversationId, {
         ciphertext: toBase64(ciphertext),
         epoch: epoch.toString(),
         senderDeviceId,
       });
+      // Persist our own plaintext: we can't re-decrypt our own single-use MLS message after reload (and
+      // the server's echo of it self-rejects), so without this our own history would blank on reload.
+      await repo.saveMessagePlaintext(conversationId, sent.id, text);
       log.debug("sent message", {
         conversationId,
         messageId: sent.id,
@@ -296,7 +402,7 @@ export function useSecureMessages(
         ...prev.filter((p) => p.model.id !== sent.id),
       ]);
     },
-    [crypto, rest, conversationId, group, senderDeviceId, padding]
+    [crypto, rest, repo, conversationId, group, senderDeviceId, padding, persistGroupState]
   );
 
   useEffect(() => {
@@ -329,16 +435,27 @@ export function useSecureMessages(
       if (model.conversationId !== conversationId) return;
       decrypt(model).then((m) =>
         setMessages((prev) => {
-          if (prev.some((p) => p.model.id === m.model.id)) {
-            log.trace("live message deduped", { messageId: m.model.id });
+          const i = prev.findIndex((p) => p.model.id === m.model.id);
+          if (i === -1) {
+            log.debug("live message received", {
+              conversationId,
+              messageId: m.model.id,
+              status: m.status,
+            });
+            return [m, ...prev];
+          }
+          // Already present (e.g. loaded as `pending` before the group resolved): keep the more-resolved
+          // copy in place — NEVER drop this `ok` for a stale `pending`. The decrypt above consumed the
+          // single-use MLS key, so this may be the only successful decode the message ever gets.
+          const merged = preferResolved(prev[i]!, m);
+          if (merged === prev[i]!) {
+            log.trace("live message deduped (kept existing)", { messageId: m.model.id, status: prev[i]!.status });
             return prev;
           }
-          log.debug("live message received", {
-            conversationId,
-            messageId: m.model.id,
-            status: m.status,
-          });
-          return [m, ...prev];
+          log.debug("live message upgraded", { conversationId, messageId: m.model.id, status: merged.status });
+          const next = prev.slice();
+          next[i] = merged;
+          return next;
         })
       );
     });
