@@ -111,7 +111,7 @@ the interface and all call sites are unchanged.
   bytes); fail-closed paths (bad ciphertext, unknown group). Suite-1 only.
 - **E2e (the proof)** — refactor `e2e/secure-chat.e2e.ts` to take an injectable crypto factory, then
   run the same suite twice: once with `MockSecureChatCrypto` (fast smoke) and once with
-  `createTsMlsSecureChatCrypto()` (real MLS). Same env gate (`AGORA_E2E_TEST_DATABASE_URL`); same
+  `createTsMlsSecureChatCrypto()` (real MLS). Same env gate (`AGORA_E2E_DATABASE_URL`); same
   assertions incl. server-blindness and live fan-out; the real-core run additionally proves the
   recipient joins from the Welcome alone.
 - `pnpm test` stays green and server-free (unit suite includes the new real-core unit test, which

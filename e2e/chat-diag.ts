@@ -134,7 +134,7 @@ async function main(): Promise<void> {
   const env = readE2EEnv();
   if (!env) {
     console.error(
-      "✗ AGORA_E2E_TEST_DATABASE_URL is not set.\n" +
+      "✗ AGORA_E2E_DATABASE_URL is not set.\n" +
         "  Set it (and AGORA_E2E_ACCESS_TOKEN_SECRET) to match the running agora-server's .env."
     );
     process.exit(1);

@@ -7,7 +7,7 @@
 // using `MockSecureChatCrypto` for the MLS bits and two simulated devices in one Node process. It is
 // the gate before investing in the real MLS core (Task 1).
 //
-// It is OPT-IN: skipped entirely unless `AGORA_E2E_TEST_DATABASE_URL` is set, so `pnpm test` / CI stay
+// It is OPT-IN: skipped entirely unless `AGORA_E2E_DATABASE_URL` is set, so `pnpm test` / CI stay
 // server-free. It runs under its own config (vitest.e2e.config.ts, glob `e2e/**/*.e2e.ts`) — never
 // the unit glob. Imports reach the transport SOURCE directly (no @agora-sdk/core, no React, no stub)
 // — which is also the empirical proof that the transport path loads under plain Node ESM.

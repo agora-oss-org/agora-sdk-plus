@@ -30,7 +30,7 @@ export interface E2EEnv {
 }
 
 /**
- * Read the e2e environment, or `null` when the run gate (`AGORA_E2E_TEST_DATABASE_URL`) is unset.
+ * Read the e2e environment, or `null` when the run gate (`AGORA_E2E_DATABASE_URL`) is unset.
  *
  * The whole suite is skipped when this returns `null`, so the default `pnpm test` (and CI) never
  * needs a server or a database.
@@ -40,12 +40,12 @@ export interface E2EEnv {
  *   half-configured run would fail confusingly deep in an auth check, so fail fast here instead.
  */
 export function readE2EEnv(): E2EEnv | null {
-  const databaseUrl = process.env.AGORA_E2E_TEST_DATABASE_URL;
+  const databaseUrl = process.env.AGORA_E2E_DATABASE_URL;
   if (!databaseUrl) return null;
   const accessTokenSecret = process.env.AGORA_E2E_ACCESS_TOKEN_SECRET;
   if (!accessTokenSecret) {
     throw new Error(
-      "AGORA_E2E_TEST_DATABASE_URL is set but AGORA_E2E_ACCESS_TOKEN_SECRET is not — " +
+      "AGORA_E2E_DATABASE_URL is set but AGORA_E2E_ACCESS_TOKEN_SECRET is not — " +
         "tokens would not verify against the running server. Set both (match the server's .env)."
     );
   }

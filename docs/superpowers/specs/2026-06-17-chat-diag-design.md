@@ -39,7 +39,7 @@ pnpm chat-diag -- --role responder
 ```
 
 Same env vars as the existing e2e — no new config:
-- `AGORA_E2E_TEST_DATABASE_URL` — Postgres URL of the running server's DB
+- `AGORA_E2E_DATABASE_URL` — Postgres URL of the running server's DB
 - `AGORA_E2E_ACCESS_TOKEN_SECRET` — matches the server's `.env`
 - `AGORA_E2E_BASE_URL` (optional, default `http://localhost:4000/v7`)
 - `AGORA_E2E_SOCKET_URL` (optional, default `http://localhost:4000`)
@@ -90,7 +90,7 @@ No changes to any SDK source files or existing tests.
    `bobCrypto.processWelcome(welcomeBlob)` → `bobGroup`. Advances handshake cursor.
 5. **List + decrypt messages** — `bobRest.listMessages(conversationId)` → for each message:
    `bobCrypto.decryptMessage(bobGroup, ciphertext)`. Logs raw ciphertext (base64 summary) AND
-   decrypted plaintext. At the end, creates a fresh `pg.Pool` from `AGORA_E2E_TEST_DATABASE_URL`
+   decrypted plaintext. At the end, creates a fresh `pg.Pool` from `AGORA_E2E_DATABASE_URL`
    and deletes the throwaway project row (`DELETE FROM projects WHERE id = $1`) — the responder
    is a separate process and cannot reuse the initiator's pool.
 

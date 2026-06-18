@@ -1074,7 +1074,7 @@ Delete the old `const aliceCrypto = new MockSecureChatCrypto();` / `const bobCry
 Run:
 ```bash
 pnpm --filter @agora-sdk/secure-chat-crypto run build
-export AGORA_E2E_TEST_DATABASE_URL="$(grep -E '^DATABASE_URL=' ../agora-server/.env | head -1 | cut -d= -f2- | tr -d '"')"
+export AGORA_E2E_DATABASE_URL="$(grep -E '^DATABASE_URL=' ../agora-server/.env | head -1 | cut -d= -f2- | tr -d '"')"
 export AGORA_E2E_ACCESS_TOKEN_SECRET="$(grep -E '^ACCESS_TOKEN_SECRET=' ../agora-server/.env | head -1 | cut -d= -f2- | tr -d '"')"
 pnpm test:e2e
 ```

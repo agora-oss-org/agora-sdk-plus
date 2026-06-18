@@ -6,8 +6,21 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- **`.env.example` documenting the e2e environment.** Copy to `.env` (gitignored; direnv auto-loads it
+  via the repo's `.envrc`) and fill in. Spells out the trap that the `AGORA_E2E_DATABASE_URL` must point
+  at the database the **running** agora-server reads (normally its DEV db while `pnpm dev:api` is up) —
+  not the server's own internal test database — or every seeded-project request 404s.
+
 ### Changed
 
+- **Renamed `AGORA_E2E_TEST_DATABASE_URL` → `AGORA_E2E_DATABASE_URL`** across the e2e harness, docs, and
+  `.env`. The `TEST` was misleading: the var holds whichever Postgres the server is *actually running*
+  on (typically the DEV db), which is distinct from the server's own test database used by its internal
+  suite — a naming collision that caused a real misconfiguration (e2e seeding one db while the server
+  read another, surfacing as a 404 cascade). The other knobs (`AGORA_E2E_ACCESS_TOKEN_SECRET`,
+  `AGORA_E2E_BASE_URL`, `AGORA_E2E_SOCKET_URL`) are unchanged.
 - **Declared `@types/react` as a `^18.0.0 || ^19.0.0` peer on every React-facing platform package**
   (`secure-chat/{react-js,react-native,expo}`, `social/{react-js,react-native,expo}`), matching the
   `react`/`react-dom` peer ranges already there and bringing these packages to parity with the
@@ -301,7 +314,7 @@ All notable changes to Agora SDK Plus are documented here, following
   `MockSecureChatCrypto` and two simulated devices. It proves the full round-trip end to end —
   register → publish KeyPackages → start DM → recipient joins via the handshake inbox → send →
   receive+decrypt → **server stored only ciphertext** → live `/secure` realtime fan-out → fresh-client
-  cursor catch-up (reload-survives). Gated on `AGORA_E2E_TEST_DATABASE_URL` so the default `pnpm test`
+  cursor catch-up (reload-survives). Gated on `AGORA_E2E_DATABASE_URL` so the default `pnpm test`
   and CI stay server-free; it imports the transport source directly (no `@agora-sdk/core`, no React),
   which also confirms the transport path loads under plain Node ESM. Adds devDeps `pg` + `jose`
   (direct DB seeding + token signing, mirroring agora-server's integration helpers).

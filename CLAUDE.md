@@ -111,7 +111,7 @@ inverts the dependency. The arrow is **SDK → contract**; see `STATUS.md` for t
 - `pnpm test` — unit suite (vitest); fully mocked, server-free
 - `pnpm test:e2e` — **opt-in** foundation e2e: the real transport clients against a locally running
   agora-server (register → DM → send → receive → realtime → reload, server-blind). Skipped unless
-  `AGORA_E2E_TEST_DATABASE_URL` + `AGORA_E2E_ACCESS_TOKEN_SECRET` are set (match the server's `.env`);
+  `AGORA_E2E_DATABASE_URL` + `AGORA_E2E_ACCESS_TOKEN_SECRET` are set (match the server's `.env`);
   it has its own config/glob (`e2e/**`) so `pnpm test` and CI stay server-free. See README "Develop".
 
 > `pnpm install` resolves `@agora-sdk/core` from npm; the crypto seam comes from the in-repo
