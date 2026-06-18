@@ -6,6 +6,17 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Changed
+
+- **Declared `@types/react` as a `^18.0.0 || ^19.0.0` peer on every React-facing platform package**
+  (`secure-chat/{react-js,react-native,expo}`, `social/{react-js,react-native,expo}`), matching the
+  `react`/`react-dom` peer ranges already there and bringing these packages to parity with the
+  `agora-sdk` fork's platform packages. A React 19 consumer's `@types/react@^19` is now an accepted
+  peer rather than an implicit mismatch. No runtime peer ranges changed; the remaining install-time
+  peer warnings are dev-toolchain-only (`react-native@0.79` requires React 19; Expo's CLI pulls a
+  transitive `react-dom@19`) and are shared with the `agora-sdk` fork — not emitted by `@agora-sdk/core`
+  (which itself peers `react ^18 || ^19`).
+
 ### Fixed
 
 - **Closed the last non-deduped merge path in `useSecureMessages` (React duplicate-key).** 0.6.5 fixed
