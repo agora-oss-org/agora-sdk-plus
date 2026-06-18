@@ -1,13 +1,15 @@
 // SecureChatProvider — wires transport + crypto + persistence for the secure-chat hooks.
 //
-// Sits INSIDE a ReplykeProvider: by default it resolves the API base URL and socket origin from
-// @agora-sdk/core's runtime singletons (getApiBaseUrl / getSocketUrl). Crypto AND the persistence
-// store are injected, keeping core platform- and library-agnostic. The provider builds a typed
-// SecureChatRepository over the store plus a cached resolveGroup/rememberGroup so the hooks become
-// self-sufficient (no need to thread a GroupHandle in by hand).
+// Standalone transport: the caller supplies the API base URL (and optional socket origin) directly —
+// this package has NO dependency on @agora-sdk/core. (It used to fall back to core's getApiBaseUrl /
+// getSocketUrl runtime singletons; that coupling existed only to auto-inherit a Replyke app's config,
+// and core's actual surface here was just two URL accessors. Requiring `baseUrl` makes secure chat a
+// self-contained E2EE transport usable in any app.) Crypto AND the persistence store are injected too,
+// keeping this layer platform- and library-agnostic. The provider builds a typed SecureChatRepository
+// over the store plus a cached resolveGroup/rememberGroup so the hooks become self-sufficient (no need
+// to thread a GroupHandle in by hand).
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef } from "react";
-import { getApiBaseUrl, getSocketUrl } from "@agora-sdk/core";
 import { SecureChatCrypto, GroupHandle } from "@agora-sdk/secure-chat-crypto";
 
 import { SecureChatRestClient } from "../transport/rest.js";
@@ -67,9 +69,16 @@ export interface SecureChatProviderProps {
   accessToken?: string;
   /** Override token resolution (takes precedence over `accessToken`). */
   getAccessToken?: () => string | undefined;
-  /** Override the API base URL. Defaults to @agora-sdk/core `getApiBaseUrl()`. */
-  baseUrl?: string;
-  /** Override the socket origin. Defaults to @agora-sdk/core `getSocketUrl()`. */
+  /**
+   * API base URL including the version prefix (e.g. `https://api.example.com/v7`). Required — secure
+   * chat is a standalone transport and does not resolve a URL from any ambient SDK runtime. Read
+   * lazily per request, so re-passing a changed value takes effect on the next call.
+   */
+  baseUrl: string;
+  /**
+   * Socket.io origin for the `/secure` realtime namespace. Defaults to {@link baseUrl} (the client
+   * strips any path to the origin), so pass it only when the socket lives on a different host.
+   */
   socketUrl?: string;
   /**
    * Outbound message size-bucket padding policy (metadata hardening). `"ladder"` (default) pads each
@@ -117,7 +126,7 @@ export function SecureChatProvider({
       new SecureChatRestClient({
         projectId,
         getAccessToken: resolveToken,
-        getBaseUrl: () => baseUrl ?? getApiBaseUrl(),
+        getBaseUrl: () => baseUrl,
       }),
     [projectId, resolveToken, baseUrl]
   );
@@ -127,9 +136,10 @@ export function SecureChatProvider({
       new SecureChatSocketClient({
         projectId,
         getAccessToken: resolveToken,
-        getSocketUrl: () => socketUrl ?? getSocketUrl(),
+        // Socket origin defaults to the REST base URL (the client strips the path to an origin).
+        getSocketUrl: () => socketUrl ?? baseUrl,
       }),
-    [projectId, resolveToken, socketUrl]
+    [projectId, resolveToken, socketUrl, baseUrl]
   );
 
   const resolvedStore = useMemo(() => store ?? new MemoryStore(), [store]);

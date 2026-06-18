@@ -21,7 +21,7 @@ const CONFIG: ResolvedSocialConfig = {
 };
 
 const tree = () => (
-  <SocialProvider projectId="p" accessToken="t">
+  <SocialProvider projectId="p" baseUrl="http://localhost:4000/v7" accessToken="t">
     <SocialTransparency />
   </SocialProvider>
 );

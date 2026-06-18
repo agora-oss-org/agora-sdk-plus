@@ -20,7 +20,7 @@ const WEATHER: SocialWeather = { value: 0.7, band: "fine", trend: 0.02, asOf: "2
 
 const wrap = () =>
   ({ children }: { children: React.ReactNode }) => (
-    <SocialProvider projectId="p" accessToken="t">
+    <SocialProvider projectId="p" baseUrl="http://localhost:4000/v7" accessToken="t">
       {children}
     </SocialProvider>
   );

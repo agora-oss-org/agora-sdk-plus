@@ -1,18 +1,18 @@
 // SocialProvider — wires the social REST transport and auto-resolves the project's feature config.
 //
-// Sits INSIDE a ReplykeProvider: by default it resolves the API base URL from @agora-sdk/core's
-// runtime singleton (getApiBaseUrl). On mount it fetches `GET /social/transparency` once and stores
-// the resolved config so every hook/component can self-gate on the per-project feature flags WITHOUT
-// each issuing its own probe (SOCIAL.md §7 — "check transparency at app init"). There is no crypto and
-// no persistence here: social data is public/server-side and slow-moving, so the provider holds
-// fetched config in React state only.
+// Standalone transport: the caller supplies the API base URL directly — this package has NO dependency
+// on @agora-sdk/core (it previously fell back to core's getApiBaseUrl runtime singleton, a coupling
+// whose only purpose was auto-inheriting a Replyke app's config). On mount it fetches
+// `GET /social/transparency` once and stores the resolved config so every hook/component can self-gate
+// on the per-project feature flags WITHOUT each issuing its own probe (SOCIAL.md §7 — "check
+// transparency at app init"). There is no crypto and no persistence here: social data is
+// public/server-side and slow-moving, so the provider holds fetched config in React state only.
 //
 // Graceful degradation: a `503 social/graph-unavailable` is treated as "the whole graph is off" — we
 // store an ALL-DISABLED sentinel rather than an error, so surfaces hide silently instead of throwing
 // at members. Any other failure is surfaced via `configError` for the host app to decide on.
 
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { getApiBaseUrl } from "@agora-sdk/core";
 
 import { SocialRestClient } from "../transport/rest.js";
 import { SocialApiError } from "../transport/rest.js";
@@ -73,8 +73,12 @@ export interface SocialProviderProps {
   accessToken?: string;
   /** Override token resolution (takes precedence over `accessToken`). */
   getAccessToken?: () => string | undefined;
-  /** Override the API base URL. Defaults to @agora-sdk/core `getApiBaseUrl()`. */
-  baseUrl?: string;
+  /**
+   * API base URL including the version prefix (e.g. `https://api.example.com/v7`). Required — social
+   * is a standalone transport and does not resolve a URL from any ambient SDK runtime. Read lazily per
+   * request, so re-passing a changed value takes effect on the next call.
+   */
+  baseUrl: string;
   children: React.ReactNode;
 }
 
@@ -114,7 +118,7 @@ export function SocialProvider({
       new SocialRestClient({
         projectId,
         getAccessToken: resolveToken,
-        getBaseUrl: () => baseUrl ?? getApiBaseUrl(),
+        getBaseUrl: () => baseUrl,
       }),
     [projectId, resolveToken, baseUrl]
   );

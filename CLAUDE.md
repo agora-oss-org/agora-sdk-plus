@@ -7,9 +7,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Agora SDK Plus** is the home for **additive, Agora-only SDK features** — capabilities that have
 **no upstream Replyke counterpart** and therefore must NOT live in the
 [agora-sdk](https://github.com/jenova-marie/agora-sdk) fork (whose entire value is staying a tiny,
-documented divergence from upstream Replyke). Everything here is original work that **consumes
-`@agora-sdk/core` as an ordinary published dependency** — the same way an app does. Nothing in this
-repo is a fork of, or contains code from, Replyke.
+documented divergence from upstream Replyke). Everything here is original work with **no code
+dependency on `@agora-sdk/core`** — the features are standalone (the consuming app passes the API
+`baseUrl` and access token in directly). They're designed to drop into an Agora/Replyke app and reuse
+its config, but they don't import core. Nothing in this repo is a fork of, or contains code from,
+Replyke.
 
 The first feature is **secure chat**: the client side of Agora's end-to-end-encrypted messaging
 (MLS / RFC 9420). More features will be added as sibling package groups under `packages/`.
@@ -21,18 +23,20 @@ feature like secure chat:
 
 - has **no upstream version** to track, so it can't sit in agora-sdk's lockstep release;
 - would dilute the fork's "mirror + tiny delta" model and invite scope creep;
-- is a **downstream consumer** of `@agora-sdk/core`, not a modification of it.
+- is **standalone**, not a modification of `@agora-sdk/core` (it doesn't even import it).
 
-If secure chat ever needs something `@agora-sdk/core` doesn't export, the fix is a small, deliberate,
-**documented core export addition in agora-sdk** (a tracked divergence) — never a deep-import of core
-internals from here.
+The features take everything they need (`baseUrl`, access token, crypto, store) as explicit inputs, so
+they never reach into core internals and never force a core change. (They formerly fell back to core's
+`getApiBaseUrl`/`getSocketUrl` runtime singletons to auto-inherit a Replyke app's config; that was the
+only coupling, and it was dropped in favor of a required `baseUrl` so the features are usable in any
+app, Replyke or not.)
 
 ## Related repos
 
 | Repo | Role |
 |---|---|
 | [agora-server](https://github.com/jenova-marie/agora-server) | The API. Owns the secure-chat **blind Delivery Service** and the wire contract (`@agora-server/contract`). The `SecureChatCrypto` seam moved out of here into this repo (it was test-only client code). See its `docs/SECURE_CHAT.md` — the canonical spec. |
-| [agora-sdk](https://github.com/jenova-marie/agora-sdk) | The Replyke fork (`@agora-sdk/{core,react-js,react-native,expo}`). We depend on its published `@agora-sdk/core`. |
+| [agora-sdk](https://github.com/jenova-marie/agora-sdk) | The Replyke fork (`@agora-sdk/{core,react-js,react-native,expo}`). A sibling SDK an app runs alongside these features — **no longer a code dependency** of this repo (the app passes the shared `baseUrl` in). |
 | **agora-sdk-plus** (this repo) | Additive Agora-only SDK features. First: secure chat. |
 
 ## Architecture
@@ -65,7 +69,7 @@ opaque base64 blobs (KeyPackages, Welcomes, Commits, application ciphertext, key
 **never sees plaintext**. **All MLS crypto lives here, client-side, behind the `SecureChatCrypto`
 seam.** This SDK's job:
 
-1. **Transport** — typed REST client over `@agora-sdk/core`'s base URL/auth, plus the `/secure`
+1. **Transport** — typed REST client over a caller-supplied `baseUrl` + access token, plus the `/secure`
    socket.io namespace for realtime fan-out (`secure:message`, `secure:welcome`, `secure:handshake`,
    `secure:key-packages-low`, …).
 2. **Crypto (DI)** — accept a `SecureChatCrypto` implementation. Core ships against the interface +
@@ -105,7 +109,7 @@ inverts the dependency. The arrow is **SDK → contract**; see `STATUS.md` for t
 - `pnpm run build-all` — build all packages in dependency order (core → react-js → react-native →
   expo); each compiles dual ESM (`dist/esm`, `tsconfig.esm.json`) + CJS (`dist/cjs`,
   `tsconfig.cjs.json`) — **except `react-js`, which is ESM-only** (it depends on the ESM-only ts-mls
-  core + bundler-only `@agora-sdk/core`, so a CJS build would never load at runtime)
+  core, so a CJS build would never load at runtime; web/React consumers bundle anyway)
 - `pnpm --filter @agora-sdk/secure-chat-core run build` — build one package while iterating
 - `pnpm run typecheck` — `tsc --noEmit` at the root
 - `pnpm test` — unit suite (vitest); fully mocked, server-free
@@ -114,10 +118,10 @@ inverts the dependency. The arrow is **SDK → contract**; see `STATUS.md` for t
   `AGORA_E2E_DATABASE_URL` + `AGORA_E2E_ACCESS_TOKEN_SECRET` are set (match the server's `.env`);
   it has its own config/glob (`e2e/**`) so `pnpm test` and CI stay server-free. See README "Develop".
 
-> `pnpm install` resolves `@agora-sdk/core` from npm; the crypto seam comes from the in-repo
-> `@agora-sdk/secure-chat-crypto` workspace package, and the wire types from the published
-> `@agora-server/contract` (re-exported type-only by `core/src/contract/`). No cross-repo linking is
-> required to build.
+> These packages have **no `@agora-sdk/core` dependency** (the app supplies `baseUrl` directly). The
+> crypto seam comes from the in-repo `@agora-sdk/secure-chat-crypto` workspace package, and the wire
+> types from the published `@agora-server/contract` (re-exported type-only by `core/src/contract/`). No
+> cross-repo linking is required to build.
 
 ## Engineering standards (enforced)
 

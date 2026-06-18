@@ -27,19 +27,31 @@ swappable `SecureChatCrypto` seam.
 ## Install (once published)
 
 ```bash
-# web
-pnpm add @agora-sdk/core @agora-sdk/secure-chat-react-js
+# web — standalone, no @agora-sdk/core required
+pnpm add @agora-sdk/secure-chat-react-js
 ```
 
 ```tsx
-import { ReplykeProvider } from "@agora-sdk/react-js";
-import { SecureChatProvider } from "@agora-sdk/secure-chat-react-js";
+import {
+  SecureChatProvider,
+  createWebSecureChatCrypto,
+  createIndexedDBStore,
+} from "@agora-sdk/secure-chat-react-js";
 
-<ReplykeProvider projectId={projectId} baseUrl={baseUrl}>
-  <SecureChatProvider crypto={crypto} accessToken={accessToken}>
-    {/* useSecureConversations(), useSecureMessages(), … */}
-  </SecureChatProvider>
-</ReplykeProvider>
+// Memoize crypto + store so they're stable across renders (a fresh instance each render rebuilds the
+// provider and churns the device). `baseUrl` is required — secure chat is a standalone transport.
+const crypto = useMemo(() => createWebSecureChatCrypto(), []);
+const store = useMemo(() => createIndexedDBStore(), []);
+
+<SecureChatProvider
+  projectId={projectId}
+  baseUrl={baseUrl}          // e.g. https://api.example.com/v7
+  accessToken={accessToken}
+  crypto={crypto}
+  store={store}
+>
+  {/* useSecureConversations(), useSecureMessages(), … */}
+</SecureChatProvider>
 ```
 
 ## Develop
@@ -75,8 +87,9 @@ Other knobs: `AGORA_E2E_BASE_URL` (default `http://localhost:4000/v7`), `AGORA_E
 
 - **[agora-server](https://github.com/jenova-marie/agora-server)** — the blind MLS Delivery Service.
   Canonical spec: its `docs/SECURE_CHAT.md`.
-- **[agora-sdk](https://github.com/jenova-marie/agora-sdk)** — the Replyke fork; we consume its
-  published `@agora-sdk/core`.
+- **[agora-sdk](https://github.com/jenova-marie/agora-sdk)** — the Replyke fork; a sibling SDK an app
+  can run alongside these features. **No longer a code dependency** of this repo — the app passes the
+  shared `baseUrl` in.
 - **agora-sdk-plus** (this repo) — the client crypto + transport + React layer.
 
 See [CLAUDE.md](CLAUDE.md) for architecture, [ARCHITECTURE.md](ARCHITECTURE.md) for diagrams

@@ -27,7 +27,7 @@
   "module": "dist/esm/index.js",
   "types": "dist/esm/index.d.ts",
   "type": "module",
-  "comment:esm-only": "ESM-only: this web binding depends on @agora-sdk/core (bundler-only, see UPSTREAM_FIX.md) and the ESM-only @agora-sdk/secure-chat-crypto/ts-mls core, so a CJS build would never load at runtime. Web/React consumers always bundle (Vite/webpack/Metro).",
+  "comment:esm-only": "ESM-only: this web binding depends on the ESM-only @agora-sdk/secure-chat-crypto/ts-mls core, so a CJS build would never load at runtime. Web/React consumers always bundle (Vite/webpack/Metro) anyway.",
   "scripts": {
     "build:esm": "tsc -p tsconfig.esm.json",
     "build": "rimraf dist && pnpm run build:esm",
@@ -44,7 +44,6 @@
     "@agora-sdk/secure-chat-crypto": "workspace:*"
   },
   "peerDependencies": {
-    "@agora-sdk/core": "^1.2.2",
     "@types/react": "^18.0.0 || ^19.0.0",
     "react": "^18.0.0 || ^19.0.0",
     "react-dom": "^18.0.0 || ^19.0.0"

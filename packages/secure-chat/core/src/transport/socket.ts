@@ -45,7 +45,7 @@ export type SecureSocket = Socket<SecureServerEvents, SecureClientEvents>;
  * (not captured once) so a refreshed token is used on the next (re)connect.
  */
 export interface SecureChatSocketConfig {
-  /** Resolve the socket origin (e.g. `getSocketUrl()` from @agora-sdk/core). */
+  /** Resolve the socket origin (the client strips any path; e.g. `() => "https://host/v7"`). */
   getSocketUrl: () => string;
   /** Resolve the current access token (sent in the socket `auth` handshake). */
   getAccessToken: () => string | undefined;

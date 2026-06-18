@@ -14,7 +14,7 @@ describe("SecureChatProvider persistence wiring", () => {
     const store = new MemoryStore();
 
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <SecureChatProvider crypto={crypto} projectId="p" store={store} accessToken="t">
+      <SecureChatProvider crypto={crypto} projectId="p" baseUrl="http://localhost:4000/v7" store={store} accessToken="t">
         {children}
       </SecureChatProvider>
     );
@@ -35,7 +35,7 @@ describe("SecureChatProvider persistence wiring", () => {
     const store = new MemoryStore();
 
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <SecureChatProvider crypto={crypto} projectId="p" store={store} accessToken="t">
+      <SecureChatProvider crypto={crypto} projectId="p" baseUrl="http://localhost:4000/v7" store={store} accessToken="t">
         {children}
       </SecureChatProvider>
     );

@@ -8,11 +8,8 @@
 // `@agora-sdk/secure-chat-crypto` / `…/testing` entries (e.g. inject `MockSecureChatCrypto`) without
 // first building `dist/`. More-specific subpath alias is listed first so it wins over the bare one.
 //
-// @agora-sdk/core ships with "type":"module" but its ESM build uses extensionless relative imports
-// that Node's strict ESM resolver cannot find, and its `main` points to CJS (which itself fails
-// because the package is marked "type":"module"). We alias the package to a minimal in-repo stub
-// that exports only the two symbols this SDK actually uses (`getApiBaseUrl`, `getSocketUrl`).
-// Tests always override the URLs via props so the stubs are never actually called.
+// No @agora-sdk/core alias: neither secure-chat nor social depends on @agora-sdk/core any more (they
+// take `baseUrl` directly), so there is nothing to stub.
 
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
@@ -37,12 +34,6 @@ export default defineConfig({
       // Alias the social workspace package to its SOURCE so social-react-js component tests can import
       // the public `@agora-sdk/social-core` entry (provider, hooks, transport, types) without a build.
       "@agora-sdk/social-core": fromHere("packages/social/core/src/index.ts"),
-      // Stub out @agora-sdk/core — its published ESM build uses extensionless relative imports that
-      // Node's strict ESM resolver rejects, and its CJS build fails in an ESM context. The stub's
-      // placeholder URLs are safe because resolution is lazy: getApiBaseUrl / getSocketUrl only run
-      // inside the axios request interceptor and socket.io connect(), neither of which fires in
-      // these unit tests (no request is made, no socket opened).
-      "@agora-sdk/core": fromHere("test-support/agora-sdk-core-stub.ts"),
     },
   },
 });

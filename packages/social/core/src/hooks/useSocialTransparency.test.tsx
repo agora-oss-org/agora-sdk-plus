@@ -19,7 +19,7 @@ const CONFIG: ResolvedSocialConfig = {
 
 const wrap = () =>
   ({ children }: { children: React.ReactNode }) => (
-    <SocialProvider projectId="p" accessToken="t">
+    <SocialProvider projectId="p" baseUrl="http://localhost:4000/v7" accessToken="t">
       {children}
     </SocialProvider>
   );

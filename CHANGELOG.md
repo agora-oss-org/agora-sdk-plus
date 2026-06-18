@@ -50,6 +50,18 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Changed
 
+- **BREAKING: dropped the `@agora-sdk/core` dependency — secure-chat and social are now standalone;
+  `baseUrl` is a required provider prop.** Both feature groups used `@agora-sdk/core` for exactly one
+  thing: the `getApiBaseUrl`/`getSocketUrl` runtime-singleton fallback, which let a provider auto-inherit
+  a Replyke app's configured URL when `baseUrl`/`socketUrl` weren't passed. Those are accessors to a
+  singleton `ReplykeProvider` writes inside core (not pure functions), so the coupling only paid off
+  inside a Replyke app. `SecureChatProvider` and `SocialProvider` now **require `baseUrl`** (and
+  `SecureChatProvider`'s optional `socketUrl` defaults to `baseUrl`), the core import + fallback are
+  gone, and `@agora-sdk/core` is removed from every package's peers, the root devDeps, and the vitest
+  stub/alias. Result: the features compile/test/run with **zero `@agora-sdk/core` coupling** and work in
+  any app, Replyke or not. **Migration:** pass `baseUrl` (e.g. `https://api.example.com/v7`) to the
+  provider; if you relied on the Replyke auto-inherit, read it from your `@agora-sdk/core` config and
+  pass it in. (Demo already passes it, so it's unaffected.)
 - **Renamed `AGORA_E2E_TEST_DATABASE_URL` → `AGORA_E2E_DATABASE_URL`** across the e2e harness, docs, and
   `.env`. The `TEST` was misleading: the var holds whichever Postgres the server is *actually running*
   on (typically the DEV db), which is distinct from the server's own test database used by its internal

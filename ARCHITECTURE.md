@@ -21,7 +21,6 @@ seam. Everything below is in service of that.
 ```mermaid
 flowchart TD
   subgraph "External (not in this repo)"
-    core_sdk["@agora-sdk/core<br/>Replyke fork: base URL, auth, socket origin"]
     contract["@agora-server/contract<br/>wire types — owned by agora-server"]
     server["agora-server<br/>blind MLS Delivery Service"]
   end
@@ -36,7 +35,6 @@ flowchart TD
 
   coreP -->|interface| crypto
   coreP -->|wire types: depends on| contract
-  coreP -->|peer dep| core_sdk
   webP --> coreP
   rnP --> coreP
   expoP --> coreP

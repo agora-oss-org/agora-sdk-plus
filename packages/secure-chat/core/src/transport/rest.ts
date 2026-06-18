@@ -1,7 +1,7 @@
 // Typed REST client for the secure-chat blind Delivery Service.
 //
 // Covers every endpoint in agora-server `docs/SECURE_CHAT.md` §9. Base URL and access token are
-// resolved **lazily per request** (matching the @agora-sdk/core base-URL runtime), so a token
+// resolved **lazily per request** via caller-supplied resolvers, so a token
 // refresh or a late-set baseUrl always wins. All binary is base64 on the wire; this client never
 // inspects payloads.
 
@@ -30,7 +30,7 @@ import {
  * effect on the next request without rebuilding the client.
  */
 export interface SecureChatRestConfig {
-  /** Resolve the API base URL (e.g. `getApiBaseUrl()` from @agora-sdk/core → `http://host/v7`). */
+  /** Resolve the API base URL incl. the version prefix (e.g. `() => "https://host/v7"`). */
   getBaseUrl: () => string;
   /** Resolve the current access token, or undefined when signed out. */
   getAccessToken: () => string | undefined;
@@ -54,7 +54,7 @@ export interface SecureChatRestConfig {
  * ```typescript
  * const rest = new SecureChatRestClient({
  *   projectId,
- *   getBaseUrl: () => getApiBaseUrl(),
+ *   getBaseUrl: () => "https://host/v7",
  *   getAccessToken: () => session.accessToken,
  * });
  * const device = await rest.registerDevice(body);

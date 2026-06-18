@@ -26,7 +26,7 @@ const conv = (id: string, mlsGroupId: Uint8Array): SecureConversationModel => ({
 
 function wrap(crypto: MockSecureChatCrypto, store: MemoryStore) {
   return ({ children }: { children: React.ReactNode }) => (
-    <SecureChatProvider crypto={crypto} projectId="p" store={store} accessToken="t">
+    <SecureChatProvider crypto={crypto} projectId="p" baseUrl="http://localhost:4000/v7" store={store} accessToken="t">
       {children}
     </SecureChatProvider>
   );

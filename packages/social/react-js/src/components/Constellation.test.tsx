@@ -32,7 +32,7 @@ const SNAPSHOT: SocialConstellation = {
 };
 
 const tree = () => (
-  <SocialProvider projectId="p" accessToken="t">
+  <SocialProvider projectId="p" baseUrl="http://localhost:4000/v7" accessToken="t">
     <Constellation width={300} height={200} />
   </SocialProvider>
 );

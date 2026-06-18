@@ -1,8 +1,8 @@
 // Typed REST client for the Agora social graph (Weather / Constellation / Neighborhood / Transparency).
 //
 // Covers every endpoint in `docs/SOCIAL.md` §1–4. Base URL and access token are resolved **lazily per
-// request** (matching the @agora-sdk/core base-URL runtime), so a token refresh or a late-set baseUrl
-// always wins. Every endpoint is path-scoped to `{baseUrl}/{projectId}/social` — the `:projectId`
+// request** via caller-supplied resolvers, so a token refresh or a late-set baseUrl always wins. Every
+// endpoint is path-scoped to `{baseUrl}/{projectId}/social` — the `:projectId`
 // boundary is a privacy boundary (no cross-project social data; see SOCIAL.md §6).
 //
 // All four lenses are feature-gated server-side and degrade with specific error codes (SOCIAL.md §7).
@@ -24,7 +24,7 @@ import {
  * next request without rebuilding the client.
  */
 export interface SocialRestConfig {
-  /** Resolve the API base URL (e.g. `getApiBaseUrl()` from @agora-sdk/core → `http://host/v7`). */
+  /** Resolve the API base URL incl. the version prefix (e.g. `() => "https://host/v7"`). */
   getBaseUrl: () => string;
   /** Resolve the current access token, or undefined when signed out. */
   getAccessToken: () => string | undefined;
@@ -114,7 +114,7 @@ function extractCode(data: unknown): string | null {
  * ```typescript
  * const rest = new SocialRestClient({
  *   projectId,
- *   getBaseUrl: () => getApiBaseUrl(),
+ *   getBaseUrl: () => "https://host/v7",
  *   getAccessToken: () => session.accessToken,
  * });
  * const weather = await rest.getWeather();
