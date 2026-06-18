@@ -1,13 +1,14 @@
 # IUC — Inanna Underground Chat: history restore on a re-provisioned device
 
-**Status:** draft design — pending review
+**Status:** draft design — review folded in (2026-06-18); SAS now derived from the post-join MLS exporter secret
 **Date:** 2026-06-18
 **Scope:** A **Phase-3** secure-chat feature: when a user reinstalls/re-provisions a device and re-joins
 an existing conversation, restore the **back-history** that forward secrecy makes otherwise
 unrecoverable, by transferring **attested plaintext** from a peer device over the **MLS channel the new
 device just re-joined** — server-blind, no out-of-band key exchange. Excludes: the durable local message
-store (prerequisite — see `2026-06-18`/the replay-fix plan), at-rest encryption of that store
-(Phase-2.5), multi-device *live* fan-out, and cross-device key sync. Web + native.
+store (prerequisite — **now shipped** via the replay/history fix), at-rest encryption of that store
+(Phase-2.5 — shipped as `createEncryptedStore`), multi-device *live* fan-out, and cross-device key sync.
+Web + native.
 
 > **The myth.** Inanna descends to the underworld and is stripped of everything at seven gates; she is
 > brought back only because another keeps her memory and restores it to her. A re-provisioned device
@@ -46,7 +47,7 @@ content key) **over MLS**. No separately-exchanged password exists to leak.
 | Transfer channel | **The re-joined MLS group** (application messages) | Already E2EE, authenticated, server-blind, forward-secret. Reuses everything; nothing new to secure. |
 | Key exchange | **None.** No ad-hoc password | A symmetric key sent over the relay = no security; sent over MLS = redundant with sending the payload over MLS. |
 | Large payloads | **Envelope encryption**: A encrypts history with a fresh random key `K`, uploads the **ciphertext blob** to the server (opaque, like a Welcome/backup), sends **only `K`** over MLS | Keeps bulk off MLS app-messages while `K` never touches the relay in the clear. |
-| Verbal "code word" | **Short Authentication String (SAS)** for the *re-join*, not a key | Humans can't speak 256 bits. Its real job: A and B compare it out-of-band to confirm the KeyPackage A Adds truly belongs to B, defeating a server that splices in its own device during the join. |
+| Verbal "code word" | **Short Authentication String (SAS) derived from the post-join MLS *exporter secret*** — not from the public KeyPackage, and not a key | Humans can't speak 256 bits. Its real job: A and B compare it out-of-band to confirm the device that joined is really B's, defeating a server that splices in its own device. **Critical:** deriving it from public KeyPackage bytes (which the server relays) is **grindable** — a hostile server can brute-force a substitute KeyPackage whose truncated hash matches (≈2²⁰–2³⁰ tries for a human-length code). The exporter secret is shared only by parties that *actually joined* this epoch, so a substituted device can't compute **any** matching SAS — it fails by construction, not by luck. Same UX; one input changes. |
 | Sender consent | A explicit **`y/n` prompt** before any transfer | Human authorization; history is sensitive. Never auto-transfer. |
 | What transfers | `{ conversationId, messageId, senderUserId, createdAt, plaintext }` per row | Restores ordering + conversation association + dedup against the live stream B starts receiving on re-join. Text + sender alone loses all three. |
 | Trust model | History is **attested by A**, not cryptographically verified | FS deleted the old keys, so B *cannot* verify A's plaintext against the server's old ciphertext. Documented, not hidden. |
@@ -63,38 +64,54 @@ is an **MLS application message** with a typed frame — the blind server sees o
 1. B reinstalls → generates a fresh KeyPackage → publishes it (standard device bootstrap).
 2. B (or A) initiates re-join: A commits an Add of B's KeyPackage → server relays Commit + Welcome.
    (Or B external-joins if the group allows it.)
-3. SAS check (out-of-band): A and B each compute a short code word from B's joining identity key
-   (e.g. the first N bits of a hash of B's KeyPackage credential + group id), render it as words/digits,
-   and confirm verbally. Mismatch → A aborts the Add. This authenticates the human↔key binding and
-   stops a malicious server from substituting its own KeyPackage during the join.
-4. B processes the Welcome → joins at the CURRENT epoch. B can now decrypt FUTURE messages, but its
+3. B processes the Welcome → joins at the CURRENT epoch. B can now decrypt FUTURE messages, but its
    local store reports 0 historical messages → this is the IUC trigger.
+4. SAS check (out-of-band, AFTER the join): A and B each derive a short code word from the **MLS
+   exporter secret** of the new epoch (a label/context-bound export, truncated to human length), render
+   it as words/digits, and confirm verbally. Mismatch → A removes the just-Added device and sends/accepts
+   **nothing**. Because the exporter secret is shared only by parties that genuinely joined this epoch, a
+   server-substituted device cannot compute any matching SAS — the check fails by construction. (Do
+   **not** derive the SAS from B's public KeyPackage bytes: the server relays those, so it could grind a
+   colliding substitute and forge a match.) **No transfer payload — chunk or envelope — is sent or
+   accepted before this SAS check completes** (the M3 hard gate).
 ```
 
 ### Act II — Return: the transfer (over MLS)
 
 ```
 5. B detects "re-joined a conversation with server-side history, but local store is empty" and sends
-   an MLS control message  iuc/restore-request { conversationId, sinceCreatedAt?: null }.
-   (Or A, seeing B re-join, sends iuc/restore-offer first — either ordering works.)
-6. A prompts its user: "Restore <conversationId> history to <B's device>?  [y/n]".  On NO → A replies
-   iuc/restore-declined and stops. On YES → continue.
-7. A reads its durable plaintext store for the conversation and builds the history array:
-   [ { conversationId, messageId, senderUserId, createdAt, plaintext }, ... ]   (ascending createdAt)
+   an MLS control message  iuc/restore-request { transferId, conversationId, sinceCreatedAt?: null }.
+   (Or A, seeing B re-join, sends iuc/restore-offer { transferId, … } first — either ordering works.)
+   `transferId` is a fresh CSPRNG id bound to EVERY frame of this transfer (request/offer/chunk/
+   complete/envelope/ack), so overlapping or retried transfers can't interleave and a resume has a target.
+6. SAS gate (Act I.4 must have confirmed). A prompts its user — showing the **SAS-verified human
+   identity**, not a raw deviceId: "Restore <conversationId> history to <verified peer>?  [y/n]".
+   On NO → A replies iuc/restore-declined and stops; B **backs off** (no auto-retry storm). On YES →
+   continue. A sends NO payload until SAS has confirmed.
+7. A reads its durable plaintext store and builds the history array, ordered by **(createdAt, messageId)**
+   — messageId is the deterministic tiebreaker, since `createdAt` is server-assigned and untrusted:
+   [ { conversationId, messageId, senderUserId, createdAt, plaintext }, … ]
 
    Variant INLINE (small history):
-     A sends iuc/restore-chunk { seq, total, rows[] } as one or more MLS application messages
-     (chunked to stay under a safe app-message size), then iuc/restore-complete { count, sha256 }.
+     A sends iuc/restore-chunk { transferId, seq, total, rows[] } as one or more MLS application
+     messages (chunked under a safe app-message size), then iuc/restore-complete { transferId, count, sha256 }.
 
    Variant ENVELOPE (large history):
-     A: K = CSPRNG key;  blob = AEAD_encrypt(K, JSON(history))
-     A: POST blob to the server as an opaque restore-blob → gets a blobId
-     A: sends iuc/restore-envelope { blobId, K, count, sha256 } over MLS   (K only crosses MLS)
-     B: GET blob by blobId → AEAD_decrypt(K) → history
-8. B validates (sha256 over the canonical JSON), de-duplicates against any rows it already holds
-   (by messageId — B may have started receiving LIVE messages the instant it re-joined at step 4),
-   and populates its durable plaintext store. B sends iuc/restore-ack { count }.
-9. Done. B renders full history from its store; live messages continue uninterrupted.
+     A: K = CSPRNG 256-bit key  (FULL entropy — NO argon2id/KDF; do not reuse the passphrase-backup path)
+     A: blob = XChaCha20-Poly1305(K, canonicalJSON(history))   (named AEAD; the transfer descriptor bound as AAD)
+     A: POST blob as an opaque restore-blob SCOPED to B's deviceId → gets a blobId
+     A: sends iuc/restore-envelope { transferId, blobId, K, count, sha256 } over MLS   (K only crosses MLS)
+     B: GET blob by blobId (server enforces the deviceId scope) → AEAD_decrypt(K) → history
+        the blob is deleted on ack or a short TTL, whichever is first.
+8. Before writing, B records a **restore-in-progress** marker keyed by `transferId`. B validates (sha256
+   over the SAME pinned canonical JSON form — see N1), bounds-checks the frame (max size / max chunk
+   count — it is untrusted input from A; see Wire framing), de-duplicates against any rows it already
+   holds (by messageId — B may have started receiving LIVE messages the instant it re-joined at step 3),
+   populates its durable plaintext store, then writes **restore-complete** and sends
+   iuc/restore-ack { transferId, count }.
+9. Done. B renders full history from its store; live messages continue uninterrupted. A crash between
+   8's start and completion leaves the in-progress marker, so B **resumes/restarts** the transfer
+   rather than being stranded with partial history (the empty-store trigger alone would never re-fire).
 ```
 
 ### Wire framing (the typed application-message payload)
@@ -105,7 +122,8 @@ discriminator so control traffic can share the channel:
 ```jsonc
 // the plaintext INSIDE the MLS application message (before padding), v2 framing:
 { "v": 2, "kind": "chat", "text": "hello 💜" }
-{ "v": 2, "kind": "iuc",  "iuc": { "type": "restore-request" | "restore-offer" | "restore-declined"
+{ "v": 2, "kind": "iuc",  "iuc": { "transferId": "…",
+                                   "type": "restore-request" | "restore-offer" | "restore-declined"
                                           | "restore-chunk" | "restore-envelope" | "restore-complete"
                                           | "restore-ack",
                                    /* type-specific fields per Act II */ } }
@@ -116,13 +134,21 @@ discriminator so control traffic can share the channel:
   Control messages are **never** rendered as chat and **never** stored as history.
 - The server-relayed `restore-blob` (envelope variant) is opaque base64, stored/relayed exactly like a
   Welcome or passphrase backup; it carries no plaintext and no `K`.
+- **Capability negotiation:** never send `v:2` IUC frames to a `v:1`-only peer — advertise frame support
+  at the device/handshake level and fall back. (Legacy `v:1` chat must still render on a `v:2` client —
+  the back-compat direction above.)
+- **Hardened parsing (untrusted input):** the decrypted frame is **attested, not verified** input from A,
+  so enforce a max frame size, a max chunk count/`total`, and reject malformed JSON — a
+  malicious-or-buggy A must not be able to OOM/crash B with a chunk flood. Per CLAUDE.md §1: validate,
+  then decode, everything relayed — this holds even though A is a trusted *peer*, because "attested" ≠
+  "well-formed".
 
 ## Security analysis
 
 | Adversary | Outcome |
 |---|---|
 | **Blind server** (relays everything) | Sees only: KeyPackages, Commit/Welcome, MLS-encrypted control messages, and (envelope) an AEAD blob. Never plaintext, never `K`, never the SAS. Unchanged blindness. |
-| **Network MITM on the join** | SAS comparison (Act I.3) detects a substituted KeyPackage; A aborts. Without SAS, a server-substituted device could join and *request* history — SAS is the gate. |
+| **Actively-malicious / compromised server on the join** | The exporter-secret SAS (Act I.4) detects a substituted device: one that didn't truly join can't compute the SAS, so the check fails by construction and A aborts. This requires the server to *actively rewrite the KeyPackage in the live path* during the rare re-provision window (a passive breach can't do it) — in-threat-model but high-effort, and free to defend, so we do. **A KeyPackage-derived SAS would be grindable and is explicitly rejected** (see Decisions). |
 | **Network MITM on the transfer** | Payload/`K` ride MLS (authenticated + confidential); tampering breaks the MLS auth tag → dropped. The envelope blob is AEAD-sealed; tampering fails decryption. |
 | **Malicious peer A** | A can **omit or fabricate** history (see Known Issues #1). IUC does not defend B against a dishonest *source* — only against the network/server. Consent (A.6) bounds *which* user can be asked. |
 | **Abusive requester** | Repeated `restore-request` is rate-limited and always gated by A's `y/n`; B cannot pull history without a human yes on A. |
@@ -133,17 +159,22 @@ discriminator so control traffic can share the channel:
    message keys, B *cannot* re-derive them to check A's claims against the server's old ciphertext.
    A could silently drop or invent messages. **Acceptable** for a user's own second device or a DM
    peer; **must be surfaced in UI** ("history restored from <A>, not independently verified"). A
-   future hardening could have A include, per row, the original ciphertext's server `messageId` so B
-   can at least confirm *existence and ordering* of rows against the server's opaque list (not their
-   content).
+   future hardening could have A include, per row, the original server `messageId`. **Caveat
+   (cross-spec):** the delivery design makes the server a *delete-on-delivery cache with no durable
+   message list*, so there is nothing to attest *against* once a blob is delivered — this hardening would
+   need a separate, deliberate "message existed" ledger, which re-introduces exactly the durable-metadata
+   trail that design collapses. Treat it as a trade to decide, not a free add.
 2. **Group-history privacy.** Re-handing full history to a re-joining member can re-expose messages
    from members who have since **left**, or content others did not expect re-shared. Fine for **DM**
    (current focus). Before group support: policy decision (transfer only messages from epochs the
    member was present for? only since their last membership? require all-member consent?).
 3. **Plaintext in transit (by necessity).** The whole point is moving *plaintext* history; it is
-   E2EE in transit, but it *is* the cleartext crossing the wire (inside MLS). The envelope blob at
-   rest on the server is AEAD-sealed, but the server holds it until GC — define a **short TTL** and
-   delete-on-ack.
+   E2EE in transit, but it *is* the cleartext crossing the wire (inside MLS). The envelope blob at rest
+   on the server is AEAD-sealed under a full-entropy random `K` that never leaves MLS, so even an
+   unauthorized fetch yields only ciphertext. Still, as defense-in-depth: **scope the blob to B's
+   `deviceId`** (server denies any other fetcher), make **delete-on-ack-or-short-TTL normative**, and
+   **name the AEAD** (XChaCha20-Poly1305). `K` is full-entropy, so there is **no argon2id/KDF** here —
+   don't reuse the passphrase-backup KDF path; a KDF over a random key buys nothing.
 4. **Which peer is the source.** In a DM, it's the one other member. In a group, multiple members
    could serve history and may disagree. Phase-3 DM picks the peer; group needs a source-selection
    rule (e.g. longest-tenured online member) — out of scope here.
@@ -155,16 +186,27 @@ discriminator so control traffic can share the channel:
    precisely to avoid large inline transfers.
 7. **Framing migration.** Introducing `v:2` typed frames touches the hot path (`encryptMessage` payload
    + `decrypt` unframing). Must stay back-compatible with any `v:1` history already stored and with
-   peers that only emit `v:1` during rollout.
-8. **SAS UX.** The code word must be derived deterministically from the joining key + group context on
-   *both* sides and rendered identically (wordlist/locale). A weak/rushed verbal check is the practical
-   soft spot — the cryptography is only as strong as the human comparison.
+   peers that only emit `v:1` during rollout. Add **capability negotiation** (never send `v:2` to a
+   `v:1`-only peer) and a **bounded, hardened parser** for the decrypted frame (max size / max chunk
+   count / reject malformed JSON) — see Wire framing.
+8. **SAS UX.** The code word is derived deterministically from the **post-join MLS exporter secret** on
+   *both* sides and must render identically (wordlist/locale). A weak/rushed verbal check is the practical
+   soft spot — the cryptography is only as strong as the human comparison. (Derivation source is
+   load-bearing: exporter secret, never the public KeyPackage — see Act I.4 and Decisions.)
 9. **No availability guarantee.** If no peer holding the history is ever online/consenting, B simply
    never recovers it. IUC is best-effort restoration, not a backup service. (The passphrase
    `exportBackup`/`importBackup` path remains the user-controlled durable backup.)
 10. **Re-provision ≠ multi-device.** This restores history to a device that *replaces* a lost one. It
     is not live multi-device sync (two active devices for one user receiving the same stream); that's a
     separate Phase-3 item with its own key-management story.
+11. **Resumability (crash mid-restore).** A crash after writing some restore rows but before completion
+    leaves a non-empty-but-incomplete store, so the empty-store trigger never re-fires and B is stranded
+    with partial history. The `transferId` + restore-in-progress/complete markers (Act II.8) make a
+    partial restore **resume or restart** rather than strand.
+12. **`sha256` canonicalization.** "sha256 over canonical JSON" only works if the canonical form is
+    pinned identically on both sides — key order, whitespace, and Unicode normalization (NFC) of
+    `plaintext`. Specify the exact canonicalization, or honest transfers fail the integrity check across
+    web/native.
 
 ## Testing strategy
 
@@ -177,8 +219,20 @@ discriminator so control traffic can share the channel:
   epoch (cannot decrypt pre-join ciphertext, proving FS), A transfers history over MLS, B's store is
   populated and renders, **server sees only ciphertext/opaque blob** (assert no plaintext on the wire).
   Cover both INLINE and ENVELOPE variants.
-- **SAS:** deterministic derivation produces identical strings on both sides for a given joining
-  key+group; a substituted KeyPackage yields a different string (the abort signal).
+- **SAS (exporter-based):** deterministic derivation from the post-join exporter secret produces
+  identical strings on both genuinely-joined sides; a device that did **not** actually join **cannot
+  compute any SAS** (the abort signal — proving grinding resistance, not just "a different string").
+- **Transfer gated on SAS (M3):** no chunk/envelope/`K` leaves A before SAS confirms.
+- **Resumability (M2):** a crash after partial writes resumes/restarts via the in-progress marker; the
+  empty-store trigger is not the only completion path.
+- **`transferId` disambiguation (M4):** interleaved/overlapping transfers never splice; a spliced
+  transfer is rejected by the sha256 check.
+- **Hardened parser / DoS bounds (M6):** oversized or malformed frames and chunk floods are rejected; a
+  `v:2` frame sent to a `v:1`-only peer is handled (no crash) and legacy `v:1` chat still renders; a
+  decline triggers back-off, not a retry storm.
+- **Envelope blob authz (M5):** a non-recipient device is denied the `blobId`; the blob is deleted on
+  ack or TTL; `K` is a full-entropy random key (no KDF).
+- **Canonicalization (N1):** identical canonical bytes (key order / whitespace / NFC) on web + native.
 
 ## Out of scope / future
 
@@ -197,3 +251,6 @@ discriminator so control traffic can share the channel:
   most naturally a `useSecureRestore` hook + a small `iuc/` module under `secure-chat/core`.
 - **Storage** stays behind the swappable `SecureChatStore` seam; native (Phase 3) puts the envelope
   `K` / restored-store key in Keychain/Keystore, web in a non-extractable WebCrypto key.
+- **At-rest (the sink).** B's restored plaintext lands in the durable `SecureChatStore`, which on web
+  can now be sealed at rest by wrapping it with `createEncryptedStore` (see
+  `2026-06-18-encryption-at-rest-design.md`) — IUC populates the store; the decorator seals it.
