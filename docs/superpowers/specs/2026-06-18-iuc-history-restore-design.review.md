@@ -12,12 +12,10 @@ so plaintext (or an envelope key `K`) rides an already-authenticated, forward-se
 The naive "send a password over the relay" anti-pattern is correctly identified and dissolved. The
 durability/availability concerns are honest and mostly correctly scoped to DM.
 
-**But there is one real cryptographic flaw**: the **SAS is derived from public KeyPackage data and
-truncated to human length, which makes it grindable** — a malicious server can substitute its own device
-and still produce a matching code word. That defeats the exact attack the SAS exists to stop. Everything
-else is design-hardening (resumability, transfer-gating, framing rollout) and one **cross-spec
-contradiction** with the delivery design. None of it is a content-confidentiality break in steady state;
-the SAS issue is a *join-time authentication* break.
+The one genuine cryptographic finding (the SAS, F-SAS below) is **real but narrow**: it only matters
+against a malicious or actively-compromised server, during the rare re-provision window, for a user who
+actually performs the verbal check — and it's nearly free to fix at design time. It is **not** an active
+hole an outsider can walk through. See the calibration note and the documented downgrade reasoning.
 
 ## Ground-truth check (what exists vs what IUC assumes)
 
@@ -32,121 +30,155 @@ the SAS issue is a *join-time authentication* break.
 The takeaway matches the delivery review: IUC is a second story on the not-yet-poured durable-store
 ground floor. It cannot be built or tested end-to-end until that store lands.
 
----
+## Severity calibration (how to read the ratings)
 
-## 🔴 High severity
+Severities were **recalibrated after review discussion**. Two things drive a rating:
 
-### H1 — The SAS is grindable: it authenticates *public* KeyPackage bytes, truncated to human length
+1. **Which axis is it on?**
+   - **Durability / correctness (honest-user):** harm happens through ordinary bugs/crashes/normal
+     conditions — **no attacker required**. No likelihood discount.
+   - **Security (adversary-dependent):** harm requires a malicious or **actively-compromised** server
+     (a passive data breach is not enough — the attacker must tamper with live traffic) **and** usually
+     a rare window. These get a likelihood discount: in-threat-model, but not everyday.
+2. **Cost to fix now** — design-stage, so several fixes are nearly free now and expensive later.
 
-The SAS is specified as *"the first N bits of a hash of B's KeyPackage credential + group id"*
-(`:67`, `:159-161`). Its stated job is to stop a malicious server from substituting its own KeyPackage
-during the join (`:69`, security table `:125`). **As specified it does not reliably do that.**
+> **Finding IDs are stable identifiers, _not_ the severity.** Some are recalibrated from the first draft;
+> the 🔴/🟠/🟡 on each finding and in the table is the severity.
 
-The attack it's meant to block, run against this SAS:
-1. Server intercepts B's published KeyPackage `KP_B` (public — it relays it) and computes B's expected
-   SAS = `truncate_N(H(cred_B ‖ gid))`. All inputs are **public and known to the server.**
-2. Server generates its own device `E` and **grinds** candidate KeyPackages `KP_E = {identity:"B",
-   sigkey: E_pub, …}` — freely varying `E_pub` / the leaf HPKE key — until
-   `truncate_N(H(cred_E ‖ gid)) == truncate_N(H(cred_B ‖ gid))`.
-3. Server substitutes `KP_E`. A adds `E`; the Welcome is sealed to `E` → server reads the group and can
-   `restore-request` as "B". A and B compare SAS over the phone → **they match** → A proceeds.
+| ID | Axis | Calibrated | Was | One-line reason |
+|---|---|---|---|---|
+| F-SAS (was H1) | security | 🟠 Medium | 🔴 | Real, but requires an **actively-malicious/compromised server**, a **rare re-provision window**, and a user who **does** the check. Free to fix now. See downgrade note. |
+| M2 | correctness | 🟠 Medium | 🟠 | A crash mid-restore strands B with permanent **partial** history; honest-user harm, no fallback. Stays. |
+| M1 | cross-spec | 🟡 Note | 🟠 | A **speculative future** hardening (#1) assumes a server archive the delivery spec deletes; reconcile. |
+| M3 | security/hygiene | 🟡 Note | 🟠 | "Gate transfer on SAS" is a normative rule to state; same adversary as F-SAS. |
+| M4 | robustness | 🟡 Note | 🟠 | Overlap is uncommon **and caught by the sha256 check**; trivial fix (`transferId`). |
+| M5 | security/hygiene | 🟡 Note | 🟠 | Blob is **AEAD-sealed**, so missing authz is defense-in-depth + cleanup, not a break. |
+| M6 | robustness/hygiene | 🟡 Note | 🟠 | `v:2` rollout + defensive parsing; worst case is a **crash/DoS from your own DM peer**, not a leak. |
+| N1–N5 | mixed | 🟡 Note | 🟡 | Smaller points; unchanged. |
 
-For human-length codes (≈ 20–30 bits: 6 digits or 4–6 words), grinding step 2 is ~2²⁰–2³⁰ hashes —
-**trivial to feasible offline.** Deriving a SAS from *public, attacker-known* inputs gives the MITM
-everything needed to forge a collision.
-
-**The standard fix:** derive the SAS from a **secret established by the join**, not from the public
-KeyPackage. In MLS, use the group **exporter secret** (or a key-confirmation value) — i.e. A and B each
-compute the code from the shared group secret *after* B joins. Then:
-- the inputs are **secret**, so the server can't grind a public value to match;
-- crucially, a substituted `E` (not B) means **B never joined and has no group secret**, so B **cannot
-  compute any SAS** → the comparison fails by construction, not by luck.
-
-This is a small change in derivation with a large change in guarantee. **Until this is fixed, the SAS
-provides a false sense of authentication** and should not be described as defeating server substitution.
+Net: **0 High, 2 Medium (F-SAS, M2), the rest notes.** (No High: a failed IUC mostly means "history not
+restored" — best-effort by design — rather than corrupting good data; the nearest exception, M2, is
+rare².)
 
 ---
 
 ## 🟠 Medium severity
 
-### M1 — Cross-spec contradiction: the #1 hardening assumes a server archive the delivery design deletes
+### F-SAS (was H1) — The SAS is grindable: it authenticates *public* KeyPackage bytes, truncated to human length
+**Axis: security (adversary-dependent). Severity: 🟠 Medium — downgraded from 🔴 High.**
 
-IUC known-issue #1 proposes a future hardening where *"A includes, per row, the original ciphertext's
-server `messageId` so B can confirm existence and ordering against the server's opaque list"* (`:138`).
-But the sibling [delivery design](2026-06-18-delivery-and-privacy-modes-design.md) makes the server a
-**delete-on-delivery cache** with **no durable message list** to check against — and names IUC as the
-*reason* history isn't on the server. So the two specs are aligned in motivation but the IUC **hardening
-is incompatible** with the delivery model: there will be no server-side messageId list to attest
-against. Either drop that hardening, or define a separate durable "message existed" ledger (which
-re-introduces exactly the metadata trail the delivery spec collapses). Flag and reconcile.
+**The finding.** The SAS is specified as *"the first N bits of a hash of B's KeyPackage credential +
+group id"* (`:67`, `:159-161`); its job is to stop a malicious server substituting its own KeyPackage at
+join (`:69`, `:125`). All those inputs are **public** (the server relays the KeyPackage). So a hostile
+server can: compute B's expected SAS from public data → **grind** its own substitute KeyPackages until
+one's truncated hash collides (≈ 2²⁰–2³⁰ tries for a human-length code — practical) → substitute it → A
+and B compare the code → **it matches** → the server's device is in the group and can request history.
+Deriving a verbal code from *public, attacker-known* inputs gives the MITM exactly what it needs to forge
+a match.
+
+**The fix (small, standard).** Derive the SAS from a **secret established by the join** — the MLS
+**exporter secret** (or a key-confirmation value), computed by A and B *after* B joins. Then the inputs
+are secret (ungrindable), and a substituted device that never actually joined **cannot compute any SAS at
+all** → the check fails *by construction*, not by luck. Same UX; one input changes.
+
+**Why downgraded from High → Medium (documented reasoning).** The original "High" over-weighted the
+cryptographic possibility and under-weighted the threat model. On review:
+
+- **It is not an outside-attacker hole.** The adversary is the **server itself**, acting maliciously —
+  and not merely *breached* (a database dump or passive read is **not enough**): it must **actively
+  tamper with live traffic**, rewriting the KeyPackage in-flight during the join. That is a deep level of
+  compromise. *Knock out "server is actively hostile in the live path" and the attack disappears.*
+- **The window is rare.** It can only happen *during a re-provision* (new phone, factory reset, lost
+  device) — on the order of **once every 1–3 years per user**. The server doesn't have to *time* it (a
+  re-join is an API call that flows through it, so it's auto-notified), but it still can't attack a
+  specific target on demand without **forcing** a re-provision (e.g. stealing/bricking the phone) — a
+  high-effort, targeted move. Rarity protects against *targeted* hits; it does **not** protect against a
+  compromised server *opportunistically* skimming whoever happens to re-provision.
+- **It only bites the careful user.** A user who skips the verbal check is lost regardless of how the SAS
+  is derived; the grindability specifically defeats the user who *does* verify (the person the feature is
+  for) — but that narrows the affected population.
+- **It stays on the list (not dropped) for two reasons:** (1) the fix is **nearly free now** (change one
+  derivation input in code not yet written) and a protocol change later; (2) the whole product promise is
+  *"the server is blind and untrusted"* — this is a crack in **exactly that promise**, so a
+  *technically-true* E2EE claim becomes *true-with-an-asterisk* if shipped as written. Pay nothing now,
+  or footnote the promise later.
+
+**One-liner for the design doc:** *"The verbal-code check has a subtle flaw that lets a malicious server
+fake a match; it only matters if our own server is actively compromised and the user re-provisions, and
+it's free to fix now — so derive the SAS from the post-join shared secret, not the public KeyPackage."*
 
 ### M2 — No resumability: a crash mid-restore strands B with partial history forever
+**Axis: correctness (honest-user). Severity: 🟠 Medium — unchanged.** *Why it holds:* the harm hits an
+honest user through an ordinary crash and has **no recovery path**; *why not higher:* the trigger is
+rare² (a crash *during* the already-rare restore window).
 
-B's trigger is *"re-joined a conversation with server-side history but local store is **empty**"* (`:77`).
-If B crashes (or the app restarts) **after** writing some restore rows but before completion, the store
-is **non-empty but incomplete** → the empty-store trigger **never re-fires** → B is permanently stuck
-with partial history and no path to finish. (This is the IUC twin of the delivery spec's gap-fill gap.)
-Needs a **restore-in-progress / restore-complete** state (a marker or transfer-ledger entry) so a
-partial restore **resumes or restarts**, rather than being silently abandoned.
-
-### M3 — Transfer must be hard-gated on SAS success; "either ordering" creates a hazard
-
-The spec allows offer-first or request-first (`:78`, `:80`) and places SAS in Act I, transfer in Act II.
-Good — but it must state **normatively** that **no transfer payload (chunk/envelope) is sent or accepted
-before SAS verification completes.** Otherwise an implementation that lets A send `restore-offer` →
-chunks promptly on seeing B re-join could ship plaintext history to an **unauthenticated** (possibly
-substituted) device before the human SAS check runs. Make SAS-confirmed a precondition of step 6–7.
-
-### M4 — Missing `transferId`: concurrent/overlapping transfers can interleave
-
-The frames carry `seq/total` but no transfer identifier. If two transfers overlap — B re-requests after
-a timeout, or A offers while B requests, or a group later has two sources — chunks from different
-transfers **cannot be disambiguated** and reassembly can splice them. Add a `transferId` to every
-`iuc/*` frame and bind `seq/total/sha256/ack` to it. (Also lets M2's resume target a specific transfer.)
-
-### M5 — Envelope blob needs access control + normative TTL/delete-on-ack
-
-The envelope variant POSTs an AEAD blob and B GETs it by `blobId` (`:91-93`). Two gaps:
-- **Authorization:** the blind server must scope the restore-blob to the **intended recipient device**,
-  or any device/member can fetch the (sealed) blob — a metadata/availability leak and a needless
-  exposure surface. Specify "fetchable only by B's deviceId."
-- **Lifecycle:** #3 says "define a short TTL and delete-on-ack" but leaves it informal. Make it
-  normative: blob deleted on B's `restore-ack` **or** TTL, whichever first; A may retry within TTL.
-- **Primitive:** name the AEAD (and note that, unlike passphrase backups, `K` is a **full-entropy random
-  key**, so **no argon2id/KDF** is needed here — don't accidentally reuse the backup KDF path).
-
-### M6 — `v:2` framing rollout + parser robustness
-
-Introducing `v:2` (`:104-118`) touches the hot path and crosses a trust boundary (it parses
-**attacker-influenced** decrypted bytes from peer A):
-- **Capability negotiation:** a `v:1`-only peer receiving a `v:2` frame will mis-render or choke. Define
-  how a sender knows the peer understands `v:2` (and confirm IUC participants — a fresh re-install (B)
-  and an up-to-date peer (A) — are always `v:2`, while legacy `v:1` *chat* still renders on `v:2`
-  clients, which the spec covers).
-- **Hardened parsing:** the decrypted frame is **untrusted input from A** (attested, not verified).
-  Enforce a max frame size, max chunk count, and reject malformed JSON — otherwise a malicious/buggy A
-  can OOM or crash B via a giant `restore-chunk` flood or a pathological frame. Pair with the
-  rate-limiting already noted for `restore-request`.
+B's trigger is *"re-joined… but local store is **empty**"* (`:77`). A crash **after** writing some
+restore rows but before completion leaves the store **non-empty but incomplete** → the empty-store
+trigger **never re-fires** → B is permanently stuck with partial history. **Fix:** a
+**restore-in-progress / restore-complete** state (marker or transfer-ledger entry) so a partial restore
+**resumes or restarts**.
 
 ---
 
 ## 🟡 Notes / smaller points
 
-- **N1 — `sha256` canonicalization is underspecified.** "sha256 over the canonical JSON" (`:94`) only
-  works if canonicalization (key ordering, whitespace, Unicode normalization of `plaintext`) is pinned
-  identically on both sides; otherwise honest transfers fail the integrity check. Specify the exact
-  canonical form.
-- **N2 — `createdAt` is server-assigned and the server is untrusted.** Ordering rows by `createdAt`
-  (`:84`, `:94`) leans on a value the blind-but-untrusted server set originally. Low impact (A stores
-  what it received), but define a **deterministic tiebreaker** (e.g. `messageId`) for equal timestamps.
-- **N3 — Consent prompt should show the SAS-verified identity, not a raw `deviceId`.** A's `y/n` (`:80`)
-  is only meaningful if A's user is authorizing the *human* they SAS-verified, not an opaque device
-  string. Tie the prompt copy to the SAS outcome.
-- **N4 — Decline handling / cooldown.** After `restore-declined`, define B's behavior (no auto-retry
-  storm; back-off) in addition to the request-side rate limit (`:128`).
-- **N5 — At-rest exposure at the sink is real but correctly deferred.** B now writes plaintext history
-  durably; that's the Phase-2.5 at-rest story (`:185`) — fine to defer, worth a one-line pointer where
-  IUC populates the store.
+### M1 — Cross-spec contradiction: the #1 hardening assumes a server archive the delivery design deletes
+**Axis: cross-spec consistency. Severity: 🟡 Note — downgraded from Medium.** *Why down:* it concerns a
+**speculative future hardening** (#1's "a future hardening *could*…"), not core function. IUC #1 floats
+attesting rows against *"the server's opaque list"* (`:138`), but the delivery design makes the server a
+**delete-on-delivery cache with no durable message list**. Reconcile: drop that hardening, or define a
+separate durable "message existed" ledger (which re-introduces the metadata trail the delivery spec
+collapses).
+
+### M3 — Transfer must be hard-gated on SAS success
+**Axis: security/hygiene. Severity: 🟡 Note — downgraded from Medium.** *Why down:* it's a normative
+rule to *state*, in the same adversary domain as F-SAS. The spec allows offer-first or request-first
+(`:78`, `:80`); state explicitly that **no transfer payload is sent or accepted before SAS verification
+completes**, so an implementation can't ship plaintext history to an unauthenticated/substituted device.
+
+### M4 — Missing `transferId`: concurrent/overlapping transfers can interleave
+**Axis: robustness. Severity: 🟡 Note — downgraded from Medium.** *Why down:* overlap is uncommon **and**
+a spliced transfer is **caught by the `sha256` check** (`:94`) → rejected, not silently corrupting. Still
+worth a trivial fix: add a `transferId` to every `iuc/*` frame and bind `seq/total/sha256/ack` to it (it
+also gives M2's resume a target).
+
+### M5 — Envelope blob needs access control + normative TTL/delete-on-ack
+**Axis: security/hygiene. Severity: 🟡 Note — downgraded from Medium.** *Why down:* the blob is
+**AEAD-sealed with a key `K` that never leaves MLS**, so an unauthorized fetch yields ciphertext only —
+this is defense-in-depth + cleanup, not a break. Still: scope the blob to **B's deviceId**; make
+**delete-on-ack-or-TTL** normative; **name the AEAD** and note `K` is a full-entropy random key, so **no
+argon2id/KDF** here (don't reuse the passphrase-backup KDF path).
+
+### M6 — `v:2` framing rollout + parser robustness
+**Axis: robustness/hygiene. Severity: 🟡 Note — downgraded from Medium.** *Why down:* worst case is a
+**crash/DoS from your own DM peer**, not a confidentiality leak. Two parts: (a) **capability
+negotiation** so a `v:1`-only peer isn't sent `v:2` frames (legacy `v:1` chat must still render on `v:2`
+clients — the spec covers this direction); (b) **hardened parsing** of the decrypted frame, which is
+**untrusted input from A** (attested, not verified) — enforce max frame size / max chunk count / reject
+malformed JSON so a malicious-or-buggy A can't OOM/crash B via a chunk flood. Per CLAUDE.md ("validate
+then decode everything relayed"), part (b) is a real input-validation requirement even at Note severity.
+
+### N1 — `sha256` canonicalization is underspecified
+"sha256 over the canonical JSON" (`:94`) only works if canonicalization (key order, whitespace, Unicode
+normalization of `plaintext`) is pinned identically on both sides; otherwise honest transfers fail
+integrity. Specify the exact canonical form.
+
+### N2 — `createdAt` is server-assigned and the server is untrusted
+Ordering rows by `createdAt` (`:84`, `:94`) leans on a value the untrusted server set. Low impact (A
+stores what it received), but define a **deterministic tiebreaker** (e.g. `messageId`) for equal
+timestamps.
+
+### N3 — Consent prompt should show the SAS-verified identity, not a raw `deviceId`
+A's `y/n` (`:80`) is only meaningful if A's user authorizes the *human* they SAS-verified, not an opaque
+device string. Tie the prompt copy to the SAS outcome.
+
+### N4 — Decline handling / cooldown
+After `restore-declined`, define B's behavior (no auto-retry storm; back-off) in addition to the
+request-side rate limit (`:128`).
+
+### N5 — At-rest exposure at the sink is real but correctly deferred
+B now writes plaintext history durably — the Phase-2.5 at-rest story (`:185`). Fine to defer; worth a
+one-line pointer where IUC populates the store.
 
 ---
 
@@ -156,40 +188,39 @@ Introducing `v:2` (`:104-118`) touches the hot path and crosses a trust boundary
   E2EE break* and dissolving it by reusing the re-joined MLS channel is exactly right, and well argued.
 - **Envelope encryption** (`:48`, `:89-93`): bulk ciphertext off MLS, only `K` over MLS, blob handled
   like a Welcome/backup — the correct pattern, reusing an existing blind-relay shape.
-- **Attested-not-verified honesty** (`:52`, `:132-138`) with a hard **UI-surfacing requirement** — the
-  forward-secrecy reason B *cannot* verify is explained, not hidden.
-- **Live-overlap handling** (`:94`, `:151`): mandatory dedup by `messageId`, order by `createdAt`,
-  late restore rows must not clobber newer live rows — the right invariants, correctly called out.
+- **Attested-not-verified honesty** (`:52`, `:132-138`) with a hard **UI-surfacing requirement**.
+- **Live-overlap handling** (`:94`, `:151`): mandatory dedup by `messageId`, order by `createdAt`, late
+  restore rows must not clobber newer live rows.
 - **Consent gate, never auto-transfer** (`:50`, `:79-80`) and **rate-limiting** the requester (`:128`).
 - **Group history re-exposure and source-selection correctly deferred to DM** (`:139-142`, `:147-149`).
-- **Reuse of existing seams** (crypto, blind-relay, swappable store) keeps the new attack surface small
-  (`:190-200`).
-- **Testing strategy already strong**: SAS determinism, FS proof that B can't read pre-join ciphertext,
-  both inline + envelope variants, frame routing.
+- **Reuse of existing seams** keeps the new attack surface small (`:190-200`).
+- **Testing strategy already strong**: SAS determinism, FS proof B can't read pre-join, both variants.
 
 ---
 
 ## Decisions to add to the design doc
 
-1. **SAS from the MLS exporter secret, not the public KeyPackage (H1).** Re-derive so only a party that
-   actually joined can compute it; a substituted device fails by construction.
-2. **Transfer hard-gated on SAS success (M3).** No chunk/envelope sent or accepted before SAS confirms.
-3. **Add `transferId` + a restore-in-progress/complete marker (M2, M4).** Make restore resumable,
-   idempotent, and safe under overlap.
-4. **Reconcile #1 hardening with delete-on-delivery (M1).** Either drop the server-messageId attestation
-   or define a deliberate "message existed" ledger.
+1. **SAS from the MLS exporter secret, not the public KeyPackage (F-SAS).** Re-derive so only a party
+   that actually joined can compute it; a substituted device fails by construction. *(🟠 — do it; it's
+   free now.)*
+2. **Add `transferId` + a restore-in-progress/complete marker (M2, M4).** Make restore resumable,
+   idempotent, and safe under overlap. *(🟠 for M2 resumability; 🟡 for the overlap part.)*
+3. **Transfer hard-gated on SAS success (M3).** No chunk/envelope sent or accepted before SAS confirms.
+4. **Reconcile #1 hardening with delete-on-delivery (M1).** Drop the server-messageId attestation or
+   define a deliberate "message existed" ledger.
 5. **Envelope blob: recipient-scoped + normative TTL/delete-on-ack + named AEAD, no KDF (M5).**
 6. **`v:2` capability negotiation + hardened, bounded frame parser (M6).**
 
 ## Testing gaps to add
 
-- **SAS grinding resistance (H1):** a substituted KeyPackage cannot yield a matching code word; with the
-  exporter-based SAS, a device that did not actually join **cannot compute any SAS** (the abort signal).
+- **SAS grinding resistance (F-SAS):** a substituted KeyPackage cannot yield a matching code word; with
+  the exporter-based SAS, a device that did not actually join **cannot compute any SAS** (the abort
+  signal).
+- **Crash mid-restore → completes, not stranded (M2):** a partial store resumes/restarts; the empty-store
+  trigger isn't the only path.
 - **Transfer blocked until SAS confirmed (M3):** no plaintext/`K` leaves A before SAS success.
-- **Crash mid-restore → completes, not stranded (M2):** a partial store resumes/restarts rather than
-  silently staying partial; the empty-store trigger isn't the only path.
-- **Overlapping transfers disambiguated by `transferId` (M4):** interleaved chunks from two transfers
-  never splice.
+- **Overlapping transfers disambiguated by `transferId` (M4):** interleaved chunks never splice; a spliced
+  transfer is rejected by the sha256 check.
 - **`v:2` frame to a `v:1` peer is handled (M6):** no crash/garbage; legacy `v:1` chat still renders.
 - **DoS bounds (M6):** oversized/malformed frames and chunk floods are rejected; decline triggers
   back-off, not a retry storm.
