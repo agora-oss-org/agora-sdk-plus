@@ -1,5 +1,11 @@
 // Passphrase backup envelope codec — the REAL at-rest crypto for key-material backups.
 //
+// DEPRECATED: the server-passphrase backup path is retired. Recovery is now device-to-device via IUC,
+// and local at-rest protection is provided by `createEncryptedStore` in
+// `@agora-sdk/secure-chat-react-js` (which reuses the same argon2id RFC 9106 params, ARGON2_PARAMS).
+// This codec is kept for compatibility; full removal is a separate cleanup (it also touches the crypto
+// interface and agora-server's test devDependency).
+//
 // Where it sits in the blind-server model: the Agora server stores the resulting `blob` verbatim and
 // can never decrypt it (it never sees the passphrase; the KDF params alone are useless). So this is
 // the one place the backup's secrecy is decided. Per CLAUDE.md #1 we use a real memory-hard KDF

@@ -55,8 +55,15 @@ export interface CommitResult {
   epoch: bigint;
 }
 
-/** A serialized, passphrase-encrypted backup of all local key material (history-restore on a new
- *  browser; also the basis for cross-device history sync later). */
+/**
+ * A serialized, passphrase-encrypted backup of all local key material (history-restore on a new
+ * browser; also the basis for cross-device history sync later).
+ *
+ * @deprecated The server-passphrase backup path is retired: recovery is now device-to-device via IUC,
+ *   and at-rest protection of the local store is provided by `createEncryptedStore` in
+ *   `@agora-sdk/secure-chat-react-js`. Retained for compatibility; full removal is a separate cleanup
+ *   (it also touches agora-server's test devDependency).
+ */
 export interface PassphraseBackup {
   blob: Uint8Array;
   kdf: string;
@@ -183,6 +190,8 @@ export interface SecureChatCrypto {
    *
    * @param passphrase - The user's backup passphrase (never sent to the server).
    * @returns The encrypted backup envelope (base64-encode `blob`/`nonce` at the wire boundary).
+   * @deprecated Server-passphrase backup is retired (recovery is device-to-device via IUC; at-rest
+   *   protection is now `createEncryptedStore` in `@agora-sdk/secure-chat-react-js`). No removal yet.
    */
   exportBackup(passphrase: string): Promise<PassphraseBackup>;
   /**
@@ -194,6 +203,8 @@ export interface SecureChatCrypto {
    * @param backup - The encrypted envelope fetched from the server.
    * @returns The restored device identity.
    * @throws {Error} On a wrong passphrase or a corrupt/tampered backup (fails closed — no partial restore).
+   * @deprecated Server-passphrase backup is retired (recovery is device-to-device via IUC; at-rest
+   *   protection is now `createEncryptedStore` in `@agora-sdk/secure-chat-react-js`). No removal yet.
    */
   importBackup(passphrase: string, backup: PassphraseBackup): Promise<DeviceIdentity>;
 }

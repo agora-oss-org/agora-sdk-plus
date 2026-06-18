@@ -31,6 +31,10 @@ export default defineConfig({
         "packages/secure-chat/crypto/src/ts-mls/index.ts"
       ),
       "@agora-sdk/secure-chat-crypto": fromHere("packages/secure-chat/crypto/src/index.ts"),
+      // Alias the secure-chat core workspace package to its SOURCE so react-js modules that import
+      // runtime values from the public `@agora-sdk/secure-chat-core` entry (e.g. the base64 helpers used
+      // by `createEncryptedStore`) resolve without first building `dist/`.
+      "@agora-sdk/secure-chat-core": fromHere("packages/secure-chat/core/src/index.ts"),
       // Alias the social workspace package to its SOURCE so social-react-js component tests can import
       // the public `@agora-sdk/social-core` entry (provider, hooks, transport, types) without a build.
       "@agora-sdk/social-core": fromHere("packages/social/core/src/index.ts"),

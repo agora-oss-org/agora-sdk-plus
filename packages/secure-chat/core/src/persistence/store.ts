@@ -7,10 +7,13 @@
 // AT-REST POSTURE (honest, per CLAUDE.md §1): besides device identity and MLS group state, this
 // store now also holds DECRYPTED MESSAGE PLAINTEXT (`msg:` keys) — the durable conversation history,
 // because forward-secret MLS keys are single-use and a message can be decrypted only once. This
-// plaintext is LOCAL ONLY; the blind server never sees it. Today's implementations store it as a
-// plain blob (web: IndexedDB; tests: MemoryStore), so on-disk at-rest is unencrypted. Encryption at
-// rest (argon2id-derived, AEAD-wrapped DB key) is a future drop-in: it lands as a new SecureChatStore
-// implementation, leaving the repository and hooks untouched. The seam is the storage abstraction.
+// plaintext is LOCAL ONLY; the blind server never sees it. The base implementations store it as a
+// plain blob (web: IndexedDB; tests: MemoryStore), so THEY are unencrypted at rest. Encryption at rest
+// is a drop-in decorator: on web, wrap the base store with `createEncryptedStore(...)` from
+// `@agora-sdk/secure-chat-react-js` — it seals every VALUE with AES-256-GCM under an argon2id-derived,
+// password-wrapped DEK, leaving the repository and hooks untouched (store KEYS still pass through in
+// the clear; see that module's header for the honest values-only / keys-readable scope). The seam is
+// the storage abstraction.
 
 /** A platform-agnostic async key→blob store. Implementations: `MemoryStore`, `createIndexedDBStore`. */
 export interface SecureChatStore {

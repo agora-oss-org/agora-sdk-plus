@@ -8,6 +8,19 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Added
 
+- **Encryption at rest for the web store (`createEncryptedStore`).** A new `SecureChatStore` decorator
+  in `@agora-sdk/secure-chat-react-js` that seals every persisted **value** (MLS group/ratchet secrets,
+  the device signing key, decrypted `msg:` history, cursors) with AES-256-GCM before delegating to a
+  base store (normally `createIndexedDBStore()`). A password is stretched with **argon2id** (RFC 9106,
+  `m=64MiB, t=3, p=1`) into a KEK that wraps a random AES-256-GCM DEK held only as a **non-extractable**
+  WebCrypto `CryptoKey`; per-value AES-GCM uses a fresh CSPRNG nonce (`[version][nonce][ciphertext+tag]`).
+  The decorator adds `unlock(password)` / `lock()` / `isLocked()` / `changePassword(old, new)`
+  (re-wraps the same DEK — no bulk re-encryption) and a `StoreLockedError`; the AEAD unlock IS the
+  password check (no stored hash). Fails closed everywhere (locked → throw; wrong password or tamper →
+  generic error, never raw bytes). Store **keys** still pass through in the clear (values-only scope;
+  keys leak conversation ids + message counts the blind server already sees). The repository, provider,
+  and hooks are untouched — it drops in as a wrapper.
+
 - **Durable decrypt-once message store (local plaintext history).** `SecureChatRepository` gains
   `saveMessagePlaintext` / `loadMessagePlaintext` (keyed `msg:<conversationId>:<messageId>`) over the
   existing `SecureChatStore` seam. `useSecureMessages` now write-throughs every successful decode (and
@@ -57,6 +70,14 @@ All notable changes to Agora SDK Plus are documented here, following
   via the repo's `.envrc`) and fill in. Spells out the trap that the `AGORA_E2E_DATABASE_URL` must point
   at the database the **running** agora-server reads (normally its DEV db while `pnpm dev:api` is up) —
   not the server's own internal test database — or every seeded-project request 404s.
+
+### Deprecated
+
+- **Passphrase→server key-material backup (`exportBackup` / `importBackup` / `PassphraseBackup`).**
+  Tagged `@deprecated` on the `SecureChatCrypto` interface (no behavior change, no removal). Recovery is
+  now device-to-device via IUC, and local at-rest protection is provided by the new
+  `createEncryptedStore` decorator. Full removal is a separate cleanup (it also touches the crypto
+  interface and agora-server's test devDependency).
 
 ### Changed
 
