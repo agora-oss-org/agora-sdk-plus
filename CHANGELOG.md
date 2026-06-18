@@ -6,6 +6,16 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Fixed
+
+- **Closed the last non-deduped merge path in `useSecureMessages` (React duplicate-key).** 0.6.5 fixed
+  the optimistic-send add and the live-receive path to dedup by id, but `load`'s older-page append
+  (`loadMore`, pagination) still concatenated unconditionally — so a row already in state (one that
+  arrived live, or an overlap at the page boundary) could be appended a second time, producing two
+  children with the same React `key`. The append now filters out ids already present (the `reset`
+  reload replaces wholesale and can't duplicate), bringing all three merge paths — load, live-receive,
+  optimistic-send — to the same by-id dedup invariant: exactly one row per id.
+
 ## [0.6.5] — 2026-06-17
 
 ### Added

@@ -218,8 +218,16 @@ export function useSecureMessages(
         const oldest = page.messages[page.messages.length - 1];
         setBefore(oldest ? oldest.createdAt : before);
         setHasMore(page.hasMore);
-        // Server returns created_at DESC; keep newest-first in state.
-        setMessages((prev) => (reset ? decrypted : [...prev, ...decrypted]));
+        // Server returns created_at DESC; keep newest-first in state. Dedup by id when appending an
+        // older page: a row already in state (e.g. one that arrived live, or an overlap at the page
+        // boundary) must not be appended again, or the list would hold two children with the same
+        // React key. `reset` replaces wholesale, so it can't duplicate. Matches the by-id dedup the
+        // live-receive and optimistic-send paths already do.
+        setMessages((prev) => {
+          if (reset) return decrypted;
+          const seen = new Set(prev.map((p) => p.model.id));
+          return [...prev, ...decrypted.filter((m) => !seen.has(m.model.id))];
+        });
         log.debug("loaded message page", {
           conversationId,
           reset,
