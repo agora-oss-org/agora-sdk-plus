@@ -17,6 +17,18 @@ All notable changes to Agora SDK Plus are documented here, following
   transitive `react-dom@19`) and are shared with the `agora-sdk` fork — not emitted by `@agora-sdk/core`
   (which itself peers `react ^18 || ^19`).
 
+### Added
+
+- **`chat-diag` — a two-process secure-chat diagnostic harness (`e2e/chat-diag.ts`, `pnpm chat-diag`).**
+  Drives the full MLS round-trip (register → publish/claim KeyPackages → createGroup/Welcome → send →
+  processWelcome → decrypt) with the real ts-mls crypto against a locally running agora-server, split
+  across two OS processes (`--role initiator` then `--role responder`) that hand off via
+  `~/.agora-chat-diag/session.json`. The responder re-imports the initiator-exported device state into
+  a fresh crypto instance — a faithful, observable stand-in for the browser's "reload, don't
+  re-register" seam. Verbose per-step logging (REST paths, base64/epoch wire shapes, the
+  `deviceId`-vs-`device.id` footgun) and a `step()` helper that hard-exits on the first failure so a
+  root cause is never buried under a cascade. Reuses `e2e/bootstrap.ts`; no SDK source changed.
+
 ### Fixed
 
 - **Closed the last non-deduped merge path in `useSecureMessages` (React duplicate-key).** 0.6.5 fixed
