@@ -96,13 +96,20 @@ is an **MLS application message** with a typed frame — the blind server sees o
      A sends iuc/restore-chunk { transferId, seq, total, rows[] } as one or more MLS application
      messages (chunked under a safe app-message size), then iuc/restore-complete { transferId, count, sha256 }.
 
-   Variant ENVELOPE (large history):
+   Variant ENVELOPE (large history) — server contract SETTLED 2026-06-20, see "ENVELOPE — settled
+   server contract" below and the integration guide
+   (`docs/cross-repo/2026-06-20-iuc-restore-blob-implementation-guide.md`):
      A: K = CSPRNG 256-bit key  (FULL entropy — NO argon2id/KDF; do not reuse the passphrase-backup path)
-     A: blob = XChaCha20-Poly1305(K, canonicalJSON(history))   (named AEAD; the transfer descriptor bound as AAD)
-     A: POST blob as an opaque restore-blob SCOPED to B's deviceId → gets a blobId
+     A: blob = XChaCha20-Poly1305(K, canonicalJSON(history))   (named AEAD; the transfer descriptor — incl.
+        transferId, conversationId, fromDeviceId, targetDeviceId, chunkIndex, count — bound as AAD)
+     A: POST /restore-blobs { conversationId, fromDeviceId, targetDeviceId, blob } → 201 { blobId, expiresAt }
+        (one blob ≤ the server's size cap; a larger history is N independent blobs — chunk, do NOT fall
+        back to INLINE, see "Chunking" below)
      A: sends iuc/restore-envelope { transferId, blobId, K, count, sha256 } over MLS   (K only crosses MLS)
-     B: GET blob by blobId (server enforces the deviceId scope) → AEAD_decrypt(K) → history
-        the blob is deleted on ack or a short TTL, whichever is first.
+     B: register/re-assert its current device first (authz is the USER who owns targetDeviceId — tokens
+        are user-scoped, not device-scoped), then GET /restore-blobs/:blobId (non-destructive) →
+        AEAD_decrypt(K) → verify sha256 + AAD → persist → then DELETE /restore-blobs/:blobId.
+        Backstop: any blob B never DELETEs is swept after a short TTL. Re-GET on a crash before persist.
 8. Before writing, B records a **restore-in-progress** marker keyed by `transferId`. B validates (sha256
    over the SAME pinned canonical JSON form — see N1), bounds-checks the frame (max size / max chunk
    count — it is untrusted input from A; see Wire framing), de-duplicates against any rows it already
@@ -143,6 +150,44 @@ discriminator so control traffic can share the channel:
   then decode, everything relayed — this holds even though A is a trusted *peer*, because "attested" ≠
   "well-formed".
 
+### ENVELOPE — settled server contract (2026-06-20)
+
+The blob relay the ENVELOPE variant needs is **owned by agora-server** (the blind Delivery Service +
+`@agora-server/contract`); the SDK only consumes it. The functional request
+(`docs/cross-repo/2026-06-20-iuc-restore-blob-server-request.md`) was **answered** by the integration
+guide (`docs/cross-repo/2026-06-20-iuc-restore-blob-implementation-guide.md`), which is the source of
+truth. The load-bearing facts the SDK-side ENVELOPE design must honor:
+
+- **Endpoints** (under `{baseUrl}/{projectId}/secure-chat`): `POST /restore-blobs` →
+  `201 { blobId, expiresAt }`; `GET /restore-blobs/:blobId` (non-destructive) → the blob; `DELETE
+  /restore-blobs/:blobId` → `204`. Binary is base64; bearer auth as everywhere else.
+- **Authz is USER-scoped, not device-scoped.** Agora tokens carry a userId, not a per-device credential,
+  so the server enforces "caller is the **user who owns** device row `targetDeviceId`." B must therefore
+  **register/re-assert its current (non-revoked) device first**, then fetch. Upload requires the caller
+  to own `fromDeviceId` (a **required** body field — the server can't infer the sender device from a
+  user token) and to be an active member of `conversationId`.
+- **Existence oracle is closed.** Missing, expired, and not-the-owner all return the **same 404** on
+  GET/DELETE. Treat 404 as "nothing for me"; never branch on it.
+- **Lifecycle = explicit DELETE + TTL backstop** (the option this spec recommended). GET is
+  non-destructive → decrypt → verify → persist → **then** DELETE. Re-GET on a crash before persist.
+- **Limits are per-deployment; do NOT hardcode.** Defaults: 16 MB/blob, 900 s (15 min) TTL, 16
+  outstanding A→B, 64 outstanding to B. Discover the size cap empirically: too-large is **HTTP 413 with
+  code `secure-chat/restore-blob-too-large`** (key the chunk decision on the code). `429
+  common/rate-limited` on quota → back off and retry as B drains earlier chunks. Complete within the TTL.
+- **Chunking is client-side; the server is single-blob and stateless about it.** A history past one blob
+  is **N independent transfers** (N blobIds, N `K`s, N `sha256`s), reassembled and integrity-checked by
+  the SDK against its own descriptor (`transferId`, `chunkIndex`, `chunkCount`). **Do not fall back to
+  INLINE for the large case** — that re-introduces the thousands-of-MLS-messages pathology ENVELOPE
+  exists to avoid. (One open item to confirm back to the server: that the SDK chunks rather than
+  INLINE-falls-back.)
+- **Optional realtime nudge:** `secure:restore-blob-available { conversationId }` to B's device socket on
+  `/secure` — carries no `blobId`/key, B already learns `blobId` over MLS. Latency nicety only; never
+  depend on it.
+- **Contract types** ship in `@agora-server/contract` 0.10.0 (additive minor): `UploadRestoreBlobBody`,
+  `RestoreBlobModel`, `UploadRestoreBlobResponse`. The SDK type-only re-exports them from
+  `core/src/contract/` and adds thin REST methods (`uploadRestoreBlob` / `getRestoreBlob` /
+  `deleteRestoreBlob`). **Blocked until 0.10.0 is published** (we are on `^0.9.3`).
+
 ## Security analysis
 
 | Adversary | Outcome |
@@ -174,7 +219,11 @@ discriminator so control traffic can share the channel:
    unauthorized fetch yields only ciphertext. Still, as defense-in-depth: **scope the blob to B's
    `deviceId`** (server denies any other fetcher), make **delete-on-ack-or-short-TTL normative**, and
    **name the AEAD** (XChaCha20-Poly1305). `K` is full-entropy, so there is **no argon2id/KDF** here —
-   don't reuse the passphrase-backup KDF path; a KDF over a random key buys nothing.
+   don't reuse the passphrase-backup KDF path; a KDF over a random key buys nothing. **Realized by the
+   settled contract (2026-06-20):** the scope is enforced as "the **user** who owns `targetDeviceId`"
+   (tokens are user-scoped, not device-scoped — equivalent for the threat model), delete-on-DELETE +
+   short TTL is the lifecycle, and XChaCha20-Poly1305 is the named AEAD. See "ENVELOPE — settled server
+   contract".
 4. **Which peer is the source.** In a DM, it's the one other member. In a group, multiple members
    could serve history and may disagree. Phase-3 DM picks the peer; group needs a source-selection
    rule (e.g. longest-tenured online member) — out of scope here.
