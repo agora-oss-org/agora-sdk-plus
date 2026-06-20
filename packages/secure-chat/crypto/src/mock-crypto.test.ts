@@ -148,3 +148,54 @@ describe("MockSecureChatCrypto device-state persistence", () => {
     await expect(c.exportDeviceState()).rejects.toThrow(/no device identity/);
   });
 });
+
+describe("MockSecureChatCrypto exportSecret (seam contract)", () => {
+  // Compare bytes via Array.from(...) — the two crypto instances live in the same realm here, but the
+  // habit keeps these assertions cross-realm safe and matches the ts-mls tests.
+  const eq = (a: Uint8Array, b: Uint8Array) => expect(Array.from(a)).toEqual(Array.from(b));
+  const ne = (a: Uint8Array, b: Uint8Array) => expect(Array.from(a)).not.toEqual(Array.from(b));
+
+  it("is deterministic: same (group,label,context,length) → identical bytes", async () => {
+    const { alice, aliceGroup } = await twoPartyGroup();
+    const a = await alice.exportSecret(aliceGroup, "iuc-sas-v1", utf8("ctx"), 32);
+    const b = await alice.exportSecret(aliceGroup, "iuc-sas-v1", utf8("ctx"), 32);
+    eq(a, b);
+  });
+
+  it("is domain-separated: a different label or context changes the output", async () => {
+    const { alice, aliceGroup } = await twoPartyGroup();
+    const base = await alice.exportSecret(aliceGroup, "iuc-sas-v1", utf8("ctx"), 32);
+    const otherLabel = await alice.exportSecret(aliceGroup, "iuc-sas-v2", utf8("ctx"), 32);
+    const otherContext = await alice.exportSecret(aliceGroup, "iuc-sas-v1", utf8("ctx2"), 32);
+    ne(base, otherLabel);
+    ne(base, otherContext);
+  });
+
+  it("is group-bound: both members derive identical bytes; a non-member throws", async () => {
+    const { alice, bob, aliceGroup, bobGroup } = await twoPartyGroup();
+    // alice and bob joined the same group (the secret rode the Welcome) → same exporter output.
+    const a = await alice.exportSecret(aliceGroup, "iuc-sas-v1", new Uint8Array(), 32);
+    const b = await bob.exportSecret(bobGroup, "iuc-sas-v1", new Uint8Array(), 32);
+    eq(a, b);
+    // a fresh instance that never joined any group fails closed.
+    const stranger = new MockSecureChatCrypto();
+    await expect(stranger.exportSecret(aliceGroup, "iuc-sas-v1", new Uint8Array(), 32)).rejects.toThrow(
+      /unknown group/
+    );
+  });
+
+  it("honors the requested length", async () => {
+    const { alice, aliceGroup } = await twoPartyGroup();
+    for (const len of [16, 32, 64]) {
+      const out = await alice.exportSecret(aliceGroup, "iuc-sas-v1", new Uint8Array(), len);
+      expect(out.length).toBe(len);
+    }
+  });
+
+  it("fails closed on length <= 0", async () => {
+    const { alice, aliceGroup } = await twoPartyGroup();
+    await expect(alice.exportSecret(aliceGroup, "iuc-sas-v1", new Uint8Array(), 0)).rejects.toThrow(
+      /length must be > 0/
+    );
+  });
+});

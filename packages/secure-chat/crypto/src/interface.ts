@@ -167,6 +167,24 @@ export interface SecureChatCrypto {
    */
   exportGroupIdentities(group: GroupHandle): Promise<GroupMemberIdentity[]>;
 
+  // ── RFC 9420 MLS Exporter (out-of-band authentication; e.g. the IUC SAS) ────
+  /**
+   * RFC 9420 MLS Exporter. Derive an application-specific secret from the group's CURRENT-epoch
+   * exporter_secret, domain-separated by (label, context, length).
+   *
+   * The same group + epoch + label + context yields identical bytes on every member of the epoch; a
+   * device that did not join the epoch cannot reproduce them. Primary use: deriving the IUC SAS (the
+   * out-of-band device-authenticity check). The underlying exporter_secret is never returned or logged.
+   *
+   * @param group - A joined group handle (its current epoch).
+   * @param label - Domain-separation label (e.g. `"iuc-sas-v1"`); the caller owns the namespace.
+   * @param context - Domain-separation context bytes (may be empty; e.g. a transferId/conversationId).
+   * @param length - Output length in bytes; must be > 0.
+   * @returns The derived secret bytes, of length `length`.
+   * @throws {Error} If the group is unknown/not joined, or `length <= 0`.
+   */
+  exportSecret(group: GroupHandle, label: string, context: Uint8Array, length: number): Promise<Uint8Array>;
+
   // ── processing inbound handshakes ───────────────────────────────────────────
   processWelcome(welcome: Uint8Array): Promise<GroupHandle>;
   processCommit(group: GroupHandle, commit: Uint8Array): Promise<GroupHandle>; // advances epoch

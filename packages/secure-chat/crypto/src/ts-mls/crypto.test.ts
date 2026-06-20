@@ -179,3 +179,47 @@ describe("TsMlsSecureChatCrypto: replay/gap enforcement (classified, fail-closed
     expect(err.reason).toBe("gap-too-large");
   });
 });
+
+describe("TsMlsSecureChatCrypto: exportSecret (RFC 9420 MLS Exporter)", () => {
+  // Cross-realm-safe byte comparison (each crypto instance could come from a different realm).
+  const eq = (a: Uint8Array, b: Uint8Array) => expect(Array.from(a)).toEqual(Array.from(b));
+  const ne = (a: Uint8Array, b: Uint8Array) => expect(Array.from(a)).not.toEqual(Array.from(b));
+
+  it("interops: both members of an epoch derive identical bytes (the SAS property)", async () => {
+    const { alice, bob, aliceGroup, bobGroup } = await twoPartyDM();
+    const a = await alice.exportSecret(aliceGroup, "iuc-sas-v1", new Uint8Array(), 32);
+    const b = await bob.exportSecret(bobGroup, "iuc-sas-v1", new Uint8Array(), 32);
+    eq(a, b);
+    expect(a.length).toBe(32);
+  });
+
+  it("domain-separates on the label", async () => {
+    const { alice, aliceGroup } = await twoPartyDM();
+    const v1 = await alice.exportSecret(aliceGroup, "iuc-sas-v1", new Uint8Array(), 32);
+    const v2 = await alice.exportSecret(aliceGroup, "iuc-sas-v2", new Uint8Array(), 32);
+    ne(v1, v2);
+  });
+
+  it("binds to the epoch: a Commit that advances the epoch changes the output", async () => {
+    const { alice, aliceGroup } = await twoPartyDM();
+    const before = await alice.exportSecret(aliceGroup, "iuc-sas-v1", new Uint8Array(), 32);
+    // Advance alice's epoch by adding a third device (addMember stores the post-commit state).
+    const carol = new TsMlsSecureChatCrypto();
+    await carol.generateDeviceIdentity({ deviceId: "carol-web" });
+    const [carolKp] = await carol.generateKeyPackages(1);
+    await alice.addMember(aliceGroup, { deviceId: "carol-row", keyPackage: carolKp!.keyPackage });
+    const after = await alice.exportSecret(aliceGroup, "iuc-sas-v1", new Uint8Array(), 32);
+    ne(after, before);
+  });
+
+  it("fails closed: length <= 0, and an unknown group, both throw", async () => {
+    const { alice, aliceGroup } = await twoPartyDM();
+    await expect(alice.exportSecret(aliceGroup, "iuc-sas-v1", new Uint8Array(), 0)).rejects.toThrow(
+      /length must be > 0/
+    );
+    const stranger = new TsMlsSecureChatCrypto();
+    await expect(stranger.exportSecret(aliceGroup, "iuc-sas-v1", new Uint8Array(), 32)).rejects.toThrow(
+      /unknown group/
+    );
+  });
+});

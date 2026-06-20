@@ -243,6 +243,23 @@ export class MockSecureChatCrypto implements SecureChatCrypto {
     }));
   }
 
+  // ── RFC 9420 MLS Exporter (out-of-band authentication; e.g. the IUC SAS) ────
+  async exportSecret(
+    group: GroupHandle,
+    label: string,
+    context: Uint8Array,
+    length: number
+  ): Promise<Uint8Array> {
+    if (length <= 0) throw new Error("mock: exportSecret length must be > 0");
+    const st = this.groups.get(toHex(group.mlsGroupId));
+    if (!st) throw new Error("mock: unknown group");
+    // Deterministic stand-in for the MLS exporter: fold the per-group secret, the epoch, and the
+    // (label, context) domain separators into the keystream seed. Same group+epoch+label+context ⇒
+    // identical bytes on every instance that joined (the secret rode the Welcome); a non-member can't.
+    const seed = new Uint8Array([...st.secret, ...enc.encode(`|exporter|${label}|${st.epoch}|`), ...context]);
+    return keystream(seed, length);
+  }
+
   async processCommit(group: GroupHandle, commit: Uint8Array): Promise<GroupHandle> {
     const c = parseJson<{ epoch: string }>(commit);
     const idHex = toHex(group.mlsGroupId);

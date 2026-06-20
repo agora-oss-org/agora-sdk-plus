@@ -8,6 +8,17 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Added
 
+- **`exportSecret(group, label, context, length)` on the `SecureChatCrypto` seam.** An RFC 9420 MLS
+  Exporter that derives an application-specific secret from the group's current-epoch `exporter_secret`,
+  domain-separated by `(label, context, length)` — the same group+epoch+label+context yields identical
+  bytes on every member of the epoch, and a device that did not join cannot reproduce them. It is the
+  prerequisite for the IUC Short Authentication String (exporter-derived, not KeyPackage-derived, so a
+  blind server cannot grind a colliding device). Implemented on both the real **ts-mls** core (a thin
+  `mlsExporter` pass-through) and `MockSecureChatCrypto` (deterministic, epoch- and domain-bound), with
+  the RN/Expo Phase-3 stubs updated. Fails closed (unknown group / `length <= 0` throw); the raw
+  `exporter_secret` never crosses the method boundary. **Client-only — no server, contract, or wire
+  change.**
+
 - **Encryption at rest for the web store (`createEncryptedStore`).** A new `SecureChatStore` decorator
   in `@agora-sdk/secure-chat-react-js` that seals every persisted **value** (MLS group/ratchet secrets,
   the device signing key, decrypted `msg:` history, cursors) with AES-256-GCM before delegating to a

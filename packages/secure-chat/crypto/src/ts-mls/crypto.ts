@@ -11,7 +11,7 @@ import {
   generateKeyPackageWithKey, defaultCapabilities, defaultLifetime,
   createGroup, createCommit, joinGroup, createApplicationMessage, processMessage,
   encodeMlsMessage, decodeMlsMessage, encodeGroupState, decodeGroupState, zeroOutUint8Array, acceptAll, emptyPskIndex,
-  defaultKeyRetentionConfig,
+  defaultKeyRetentionConfig, mlsExporter,
   type Credential, type CiphersuiteImpl, type KeyPackage, type PrivateKeyPackage, type ClientState,
 } from "ts-mls";
 // makeKeyPackageRef + getGroupMembers + defaultClientConfig aren't re-exported from the package root;
@@ -225,6 +225,20 @@ export class TsMlsSecureChatCrypto implements SecureChatCrypto {
       ciphertext: encodeMlsMessage({ version: MLS_VERSION, wireformat: "mls_private_message", privateMessage: res.privateMessage }),
       epoch: res.newState.groupContext.epoch,
     };
+  }
+
+  // ── RFC 9420 MLS Exporter (out-of-band authentication; e.g. the IUC SAS) ────
+  async exportSecret(
+    group: GroupHandle,
+    label: string,
+    context: Uint8Array,
+    length: number
+  ): Promise<Uint8Array> {
+    if (length <= 0) throw new Error("secure-chat: exportSecret length must be > 0");
+    const cs = await this.cs();
+    const state = this.lookupGroup(group); // throws "unknown group (not joined or evicted)" — fail closed
+    // RFC 9420 MLS Exporter over the current epoch's exporter_secret; the secret itself never leaves here.
+    return mlsExporter(state.keySchedule.exporterSecret, label, context, length, cs);
   }
 
   async decryptMessage(group: GroupHandle, ciphertext: Uint8Array): Promise<{
