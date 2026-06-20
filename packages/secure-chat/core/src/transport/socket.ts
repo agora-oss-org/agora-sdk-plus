@@ -69,7 +69,17 @@ export class SecureChatSocketClient {
    * @returns The live socket; idempotent while already connected.
    */
   connect(): SecureSocket {
-    if (this.socket?.connected) return this.socket;
+    // Reuse an existing socket whether it's already connected OR still mid-handshake. Guarding on
+    // `.connected` (instead of existence) re-entered the io() + listener-wiring block on every
+    // connect() call made during the async connect window. socket.io multiplexes io(sameUrl) to ONE
+    // socket, so this didn't leak sockets — it stacked DUPLICATE lifecycle listeners
+    // (connect/disconnect/connect_error), N per mount, because every hook's .on()/joinConversation()
+    // calls connect() before the handshake settles. Each stacked listener is a console.debug, so the
+    // duplication shows up as N× "connecting /secure namespace" + N× "socket connected" and compounds
+    // the main thread's logging cost with DevTools open. Guard on existence so io() + listener wiring
+    // runs exactly once per socket lifetime; disconnect() nulls this.socket, so a later reconnect
+    // still builds a fresh one.
+    if (this.socket) return this.socket;
     // socket.io derives the NAMESPACE from the URL's path, so the origin handed to io() must be bare.
     // getSocketUrl() returns the REST base (e.g. `http://host/v7`); `io(`${base}/secure`)` would
     // request namespace `/v7/secure`, which the server (`io.of("/secure")`) rejects as

@@ -85,4 +85,25 @@ describe("SecureChatSocketClient connection namespace", () => {
     client.joinConversation("c1");
     expect(io).toHaveBeenCalledWith("https://api.example.com/secure", expect.anything());
   });
+
+  // Regression: connect() guarded on `.connected` instead of existence, so every connect()-triggering
+  // call made WHILE the socket was still handshaking (connected === false) re-ran io() and re-stacked
+  // the connect/disconnect/connect_error listeners. socket.io multiplexes io(sameUrl) to one socket, so
+  // the visible damage was N× duplicate lifecycle listeners + N× "connecting/connected" log lines per
+  // mount (every hook's .on()/joinConversation() hits connect() before the handshake settles).
+  it("builds the socket + wires lifecycle listeners ONCE across pre-connect calls (no stacking)", () => {
+    vi.mocked(io).mockClear();
+    fakeSocket.on.mockClear();
+    fakeSocket.connected = false; // still mid-handshake for every call below
+    const client = makeClient();
+    client.joinConversation("c1");
+    client.joinConversation("c2");
+    client.joinDevice("d1");
+    // io() constructed the socket exactly once despite three connect()-triggering calls pre-connect.
+    expect(io).toHaveBeenCalledTimes(1);
+    // Each lifecycle listener wired exactly once — not re-registered per call.
+    for (const event of ["connect", "disconnect", "connect_error"]) {
+      expect(fakeSocket.on.mock.calls.filter(([e]) => e === event)).toHaveLength(1);
+    }
+  });
 });
