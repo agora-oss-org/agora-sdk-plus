@@ -176,17 +176,21 @@ truth. The load-bearing facts the SDK-side ENVELOPE design must honor:
   common/rate-limited` on quota → back off and retry as B drains earlier chunks. Complete within the TTL.
 - **Chunking is client-side; the server is single-blob and stateless about it.** A history past one blob
   is **N independent transfers** (N blobIds, N `K`s, N `sha256`s), reassembled and integrity-checked by
-  the SDK against its own descriptor (`transferId`, `chunkIndex`, `chunkCount`). **Do not fall back to
-  INLINE for the large case** — that re-introduces the thousands-of-MLS-messages pathology ENVELOPE
-  exists to avoid. (One open item to confirm back to the server: that the SDK chunks rather than
-  INLINE-falls-back.)
+  the SDK against its own descriptor (`transferId`, `chunkIndex`, `chunkCount`). **DECIDED (2026-06-20):
+  the SDK CHUNKS for the large case and never falls back to INLINE** — INLINE-falling-back past one blob
+  re-introduces the thousands-of-MLS-messages pathology ENVELOPE exists to avoid. INLINE is reserved for
+  *genuinely small* histories only. To stay well under the server's per-pair quota (16 outstanding A→B,
+  ~256 MiB) regardless of history size, A **caps outstanding blobs and drains-as-it-goes** (B does
+  GET→persist→DELETE, freeing slots); and the SDK **may compress** `canonicalJSON(history)` before
+  sealing, which keeps most real histories to a single blob. The binding constraint is the **15-min TTL**
+  (each blob must be fetched within 15 min of its upload), not the quota.
 - **Optional realtime nudge:** `secure:restore-blob-available { conversationId }` to B's device socket on
   `/secure` — carries no `blobId`/key, B already learns `blobId` over MLS. Latency nicety only; never
   depend on it.
-- **Contract types** ship in `@agora-server/contract` 0.10.0 (additive minor): `UploadRestoreBlobBody`,
-  `RestoreBlobModel`, `UploadRestoreBlobResponse`. The SDK type-only re-exports them from
-  `core/src/contract/` and adds thin REST methods (`uploadRestoreBlob` / `getRestoreBlob` /
-  `deleteRestoreBlob`). **Blocked until 0.10.0 is published** (we are on `^0.9.3`).
+- **Contract types** ship in **`@agora-server/contract@0.13.0`** (confirmed 2026-06-20 — the endpoint is
+  built and merged): `uploadRestoreBlobSchema`, `RestoreBlobModel`, `UploadRestoreBlobResponse`. The SDK
+  type-only re-exports them from `core/src/contract/` and adds thin REST methods (`uploadRestoreBlob` /
+  `getRestoreBlob` / `deleteRestoreBlob`). **Blocked until we bump the dep to 0.13.0** (we are on `^0.9.3`).
 
 ## Security analysis
 

@@ -10,6 +10,17 @@
 This document is the source of truth for **what the server provides** and **what the SDK must do** to
 restore conversation back-history onto a re-provisioned device without weakening E2EE.
 
+> **Updates since received (2026-06-20 follow-up from the server team):**
+> - **The endpoint is built and merged** on `@agora/secure-chat`. Full server reference:
+>   `apps/secure-chat/docs/RESTORE.md` (agora-server).
+> - **Contract version corrected: `@agora-server/contract@0.13.0`** (not 0.10.0 as §10 below states — the
+>   build slipped a few minors). Exact exports: **`uploadRestoreBlobSchema`**, `RestoreBlobModel`,
+>   `UploadRestoreBlobResponse`. Bump the SDK dep to `0.13.0` when it publishes.
+> - **The §7 "chunk or fall back to INLINE?" open item is RESOLVED: the SDK CHUNKS** for the large case
+>   and never INLINE-falls-back (INLINE is for genuinely small histories only). A caps outstanding blobs
+>   and drains-as-it-goes to stay well under the 16-per-pair quota; the SDK may compress before sealing.
+>   The binding constraint is the **15-min TTL**, not the quota. (Reply-to-server pending.)
+
 ---
 
 ## 1 · What this is

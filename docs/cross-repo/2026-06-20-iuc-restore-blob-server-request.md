@@ -142,8 +142,11 @@ SDK will **type-only re-export** them from `core/src/contract/` and add thin RES
 - `RestoreBlobModel` — the GET response row
 - (and the `blobId`/`expiresAt` response shapes)
 
-This is an additive surface → a **minor** contract bump (e.g. `0.9.x` → `0.10.0`); the SDK will move its
-`@agora-server/contract` dependency to the new minor when it's published.
+This is an additive surface → a **minor** contract bump; the SDK will move its `@agora-server/contract`
+dependency to the new minor when it's published. **Settled (2026-06-20):** the types shipped in
+**`@agora-server/contract@0.13.0`** (`uploadRestoreBlobSchema`, `RestoreBlobModel`,
+`UploadRestoreBlobResponse`) and the endpoint is built and merged; the SDK is on `^0.9.3` and bumps to
+`0.13.0` when wiring ENVELOPE. (The earlier `0.10.0` sketch in this paragraph was superseded.)
 
 ## What the SDK guarantees on its side (so the blindness holds)
 
