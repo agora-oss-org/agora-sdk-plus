@@ -13,4 +13,4 @@
  * console.log(`secure-chat SDK ${VERSION}`);
  * ```
  */
-export const VERSION = "0.6.6";
+export const VERSION = "0.7.0";

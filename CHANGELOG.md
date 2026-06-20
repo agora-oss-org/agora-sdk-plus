@@ -6,6 +6,8 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-06-20
+
 ### Added
 
 - **`exportSecret(group, label, context, length)` on the `SecureChatCrypto` seam.** An RFC 9420 MLS
@@ -81,14 +83,15 @@ All notable changes to Agora SDK Plus are documented here, following
   via the repo's `.envrc`) and fill in. Spells out the trap that the `AGORA_E2E_DATABASE_URL` must point
   at the database the **running** agora-server reads (normally its DEV db while `pnpm dev:api` is up) —
   not the server's own internal test database — or every seeded-project request 404s.
-
-### Deprecated
-
-- **Passphrase→server key-material backup (`exportBackup` / `importBackup` / `PassphraseBackup`).**
-  Tagged `@deprecated` on the `SecureChatCrypto` interface (no behavior change, no removal). Recovery is
-  now device-to-device via IUC, and local at-rest protection is provided by the new
-  `createEncryptedStore` decorator. Full removal is a separate cleanup (it also touches the crypto
-  interface and agora-server's test devDependency).
+- **`chat-diag` — a two-process secure-chat diagnostic harness (`e2e/chat-diag.ts`, `pnpm chat-diag`).**
+  Drives the full MLS round-trip (register → publish/claim KeyPackages → createGroup/Welcome → send →
+  processWelcome → decrypt) with the real ts-mls crypto against a locally running agora-server, split
+  across two OS processes (`--role initiator` then `--role responder`) that hand off via
+  `~/.agora-chat-diag/session.json`. The responder re-imports the initiator-exported device state into
+  a fresh crypto instance — a faithful, observable stand-in for the browser's "reload, don't
+  re-register" seam. Verbose per-step logging (REST paths, base64/epoch wire shapes, the
+  `deviceId`-vs-`device.id` footgun) and a `step()` helper that hard-exits on the first failure so a
+  root cause is never buried under a cascade. Reuses `e2e/bootstrap.ts`; no SDK source changed.
 
 ### Changed
 
@@ -125,17 +128,13 @@ All notable changes to Agora SDK Plus are documented here, following
   transitive `react-dom@19`) and are shared with the `agora-sdk` fork — not emitted by `@agora-sdk/core`
   (which itself peers `react ^18 || ^19`).
 
-### Added
+### Deprecated
 
-- **`chat-diag` — a two-process secure-chat diagnostic harness (`e2e/chat-diag.ts`, `pnpm chat-diag`).**
-  Drives the full MLS round-trip (register → publish/claim KeyPackages → createGroup/Welcome → send →
-  processWelcome → decrypt) with the real ts-mls crypto against a locally running agora-server, split
-  across two OS processes (`--role initiator` then `--role responder`) that hand off via
-  `~/.agora-chat-diag/session.json`. The responder re-imports the initiator-exported device state into
-  a fresh crypto instance — a faithful, observable stand-in for the browser's "reload, don't
-  re-register" seam. Verbose per-step logging (REST paths, base64/epoch wire shapes, the
-  `deviceId`-vs-`device.id` footgun) and a `step()` helper that hard-exits on the first failure so a
-  root cause is never buried under a cascade. Reuses `e2e/bootstrap.ts`; no SDK source changed.
+- **Passphrase→server key-material backup (`exportBackup` / `importBackup` / `PassphraseBackup`).**
+  Tagged `@deprecated` on the `SecureChatCrypto` interface (no behavior change, no removal). Recovery is
+  now device-to-device via IUC, and local at-rest protection is provided by the new
+  `createEncryptedStore` decorator. Full removal is a separate cleanup (it also touches the crypto
+  interface and agora-server's test devDependency).
 
 ### Fixed
 
