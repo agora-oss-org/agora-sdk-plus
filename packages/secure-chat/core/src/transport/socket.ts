@@ -78,6 +78,12 @@ export class SecureChatSocketClient {
     const origin = new URL(this.config.getSocketUrl()).origin;
     log.debug("connecting /secure namespace", { origin, projectId: this.config.projectId });
     this.socket = io(`${origin}/secure`, {
+      // The secure-chat DS runs its socket.io server on its OWN engine.io path "/secure-socket/"
+      // (NOT the default "/socket.io/"), so a path-routing reverse proxy can split secure realtime
+      // onto the standalone @agora/secure-chat process. Without this, the connection lands on the
+      // main API's "/socket.io/", which has no "/secure" namespace → endless connect_error. Must stay
+      // byte-identical to the server's `new Server(httpServer, { path: "/secure-socket/" })`.
+      path: "/secure-socket/",
       auth: { token: this.config.getAccessToken() },
       query: { projectId: this.config.projectId },
       transports: ["websocket"],
