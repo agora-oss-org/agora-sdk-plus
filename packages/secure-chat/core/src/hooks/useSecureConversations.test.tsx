@@ -58,4 +58,34 @@ describe("useSecureConversations", () => {
 
     expect(await store.get("group:conv-1")).not.toBeNull();
   });
+
+  it("refreshes the list when a secure:welcome arrives (new conversation for the recipient)", async () => {
+    // Capture the handlers the hook subscribes, keyed by event, so we can fire the welcome by hand.
+    const handlers = new Map<string, (...args: any[]) => void>();
+    vi.spyOn(SecureChatSocketClient.prototype, "on").mockImplementation((event: any, handler: any) => {
+      handlers.set(event, handler);
+      return () => handlers.delete(event);
+    });
+
+    const listSpy = vi
+      .spyOn(SecureChatRestClient.prototype, "listConversations")
+      .mockResolvedValue({ conversations: [], hasMore: false }); // empty on initial mount
+
+    const crypto = new MockSecureChatCrypto();
+    const store = new MemoryStore();
+    const { result } = renderHook(() => useSecureConversations(), { wrapper: wrap(crypto, store) });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.conversations).toHaveLength(0);
+    expect(handlers.has("secure:welcome")).toBe(true);
+
+    // A DM is now created for us: the server has the row, and pushes secure:welcome to our device room.
+    listSpy.mockResolvedValue({ conversations: [conversation], hasMore: false });
+    await act(async () => {
+      handlers.get("secure:welcome")!();
+    });
+
+    await waitFor(() => expect(result.current.conversations).toHaveLength(1));
+    expect(result.current.conversations[0].id).toBe("conv-1");
+  });
 });

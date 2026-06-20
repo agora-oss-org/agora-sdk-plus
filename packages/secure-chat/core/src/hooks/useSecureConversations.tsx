@@ -128,7 +128,17 @@ export function useSecureConversations(): UseSecureConversationsValues {
   }, []);
 
   // Light realtime refresh on membership changes (metadata-only signals).
+  //
+  // `secure:welcome` is what surfaces a *brand-new* conversation to its recipient: the server emits it
+  // (only) to this device's room when someone starts a DM with us (POST /conversations) — there is no
+  // `secure:member:joined` on that path (that fires only when a member is added to an *existing* group).
+  // Without this listener the recipient's list stays stale until a remount/reload even though the
+  // handshake drain already joined the group. The event reaches only our own device room, so it's a
+  // precise "a conversation I'm now a member of just appeared" trigger; no payload inspection needed.
   useEffect(() => {
+    const offWelcome = socket.on("secure:welcome", () => {
+      refresh().catch(setError);
+    });
     const offJoined = socket.on("secure:member:joined", () => {
       refresh().catch(setError);
     });
@@ -136,6 +146,7 @@ export function useSecureConversations(): UseSecureConversationsValues {
       refresh().catch(setError);
     });
     return () => {
+      offWelcome();
       offJoined();
       offLeft();
     };
