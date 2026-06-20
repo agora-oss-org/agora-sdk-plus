@@ -1,4 +1,4 @@
-# CI — typecheck, test, and build every package on push to main and on all PRs.
+# CI — typecheck, test, and build every package on push to the trunk and on all PRs.
 #
 # Mirrors the local "definition of done": `pnpm run typecheck` + `pnpm test` + `pnpm run build-all`
 # (the same commands a contributor runs). The publish workflow re-runs this same gate before
@@ -7,7 +7,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [root] # this repo's trunk is `root`, not `main`
   pull_request:
 
 # Cancel superseded runs on the same ref (e.g. rapid pushes to a PR).
