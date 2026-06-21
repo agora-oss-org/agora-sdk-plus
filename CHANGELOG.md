@@ -8,6 +8,7 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Added
 
+- Tier-2 MimiContent builders (`secure-chat-core/content/builders`) — `post/reply/edit/delete/react/un-react` with fresh CSPRNG salts (draft-08 shape).
 - Content routing frame (`secure-chat-core/content/frame`) — `[kind:1][payload]` discriminator (`0`=MimiContent, `1`=IUC control, reserved).
 - Deterministic CBOR codec (`secure-chat-core/content/cbor`) — canonical encode + strict, bounded
   decode over the MimiContent subset (no floats/indefinite/bignum); the basis for MIMI content +
