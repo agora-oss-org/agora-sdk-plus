@@ -88,4 +88,13 @@ describe("SecureChatRepository message content (bytes)", () => {
     await repo.saveMessageContent("c", "m", raw);
     expect([...(await repo.loadMessageContent("c", "m"))!]).toEqual([0, 0xff, 0xfe, 0x00]);
   });
+  it("isolates the same message id across conversations (key is scoped by conversationId)", async () => {
+    // The store key is `msg:<conversationId>:<messageId>`, so an identical messageId in two
+    // conversations must not collide — each returns its own bytes, and neither leaks into the other.
+    const repo = new SecureChatRepository(new MemoryStore());
+    await repo.saveMessageContent("conv-A", "shared-id", bytes(0xaa));
+    await repo.saveMessageContent("conv-B", "shared-id", bytes(0xbb));
+    expect([...(await repo.loadMessageContent("conv-A", "shared-id"))!]).toEqual([0xaa]);
+    expect([...(await repo.loadMessageContent("conv-B", "shared-id"))!]).toEqual([0xbb]);
+  });
 });
