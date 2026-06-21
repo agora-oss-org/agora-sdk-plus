@@ -6,6 +6,10 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Changed
+
+- Durable message store now persists decrypted content-frame bytes (`[kind][payload]`) instead of UTF-8 plaintext — `SecureChatRepository.saveMessageContent`/`loadMessageContent` replace `saveMessagePlaintext`/`loadMessagePlaintext`.
+
 ### Added
 
 - Message fold reducer (`secure-chat-core/hooks/message-fold`) — folds reactions/edits/deletes/un-reacts onto their target by MIMI content-hash, with out-of-order buffering and reload-stable re-folding.

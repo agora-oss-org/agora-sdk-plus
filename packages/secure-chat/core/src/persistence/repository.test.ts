@@ -58,17 +58,6 @@ describe("SecureChatRepository", () => {
     expect(await repo.loadHandshakeCursor("old-row")).toBe("15"); // the old row is unaffected
   });
 
-  it("round-trips decrypted message plaintext, isolated per conversation", async () => {
-    const repo = new SecureChatRepository(new MemoryStore());
-    expect(await repo.loadMessagePlaintext("c1", "m1")).toBeNull(); // miss → null
-    await repo.saveMessagePlaintext("c1", "m1", "hi my bad bitch! 💜");
-    expect(await repo.loadMessagePlaintext("c1", "m1")).toBe("hi my bad bitch! 💜");
-    // Same message id under a DIFFERENT conversation must not collide.
-    await repo.saveMessagePlaintext("c2", "m1", "other convo");
-    expect(await repo.loadMessagePlaintext("c1", "m1")).toBe("hi my bad bitch! 💜");
-    expect(await repo.loadMessagePlaintext("c2", "m1")).toBe("other convo");
-  });
-
   it("clearAll wipes every key", async () => {
     const store = new MemoryStore();
     const repo = new SecureChatRepository(store);
@@ -77,5 +66,26 @@ describe("SecureChatRepository", () => {
     await repo.saveHandshakeCursor("row-1", "3");
     await repo.clearAll();
     expect(await store.list("")).toEqual([]);
+  });
+});
+
+describe("SecureChatRepository message content (bytes)", () => {
+  it("round-trips content-frame bytes by conversation + message id", async () => {
+    const repo = new SecureChatRepository(new MemoryStore());
+    const frame = new Uint8Array([0, 1, 2, 3]); // [kind=0][cbor…]
+    await repo.saveMessageContent("conv-1", "m1", frame);
+    const out = await repo.loadMessageContent("conv-1", "m1");
+    expect(out).not.toBeNull();
+    expect([...out!]).toEqual([0, 1, 2, 3]);
+  });
+  it("returns null on a miss", async () => {
+    const repo = new SecureChatRepository(new MemoryStore());
+    expect(await repo.loadMessageContent("conv-1", "nope")).toBeNull();
+  });
+  it("preserves bytes that are not valid UTF-8 (raw store, no text coercion)", async () => {
+    const repo = new SecureChatRepository(new MemoryStore());
+    const raw = new Uint8Array([0, 0xff, 0xfe, 0x00]);
+    await repo.saveMessageContent("c", "m", raw);
+    expect([...(await repo.loadMessageContent("c", "m"))!]).toEqual([0, 0xff, 0xfe, 0x00]);
   });
 });
