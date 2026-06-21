@@ -8,6 +8,7 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Added
 
+- `kind:1` IUC control-message codec (`secure-chat-core/restore/control`) — canonical-CBOR encode/decode for request/offer/declined/envelope/complete/ack; strict, fail-closed.
 - IUC ENVELOPE blob AEAD (`secure-chat-core/restore/seal`) — XChaCha20-Poly1305 seal/open with a full-entropy CSPRNG key and the transfer descriptor bound as canonical-CBOR AAD; fail-closed.
 
 ## [0.8.0] — 2026-06-20
