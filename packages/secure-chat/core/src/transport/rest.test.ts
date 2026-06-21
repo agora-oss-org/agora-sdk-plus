@@ -13,7 +13,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import axios, { type InternalAxiosRequestConfig } from "axios";
-import { SecureChatRestClient } from "./rest.js";
+import { SecureChatRestClient, SecureRestoreError } from "./rest.js";
 import type {
   SecureConversationMemberModel,
   SecureConversationModel,
@@ -507,6 +507,101 @@ describe("SecureChatRestClient — handshakes + key backup", () => {
   it("getKeyBackup re-throws non-404 errors (a 500 is a real failure, not 'absent')", async () => {
     response = { status: 500, data: { code: "internal" } };
     await expect(makeClient().getKeyBackup("dev-row-1")).rejects.toMatchObject({
+      response: { status: 500 },
+    });
+  });
+});
+
+describe("SecureChatRestClient — restore-blobs", () => {
+  it("uploadRestoreBlob POSTs /restore-blobs with the full body incl. fromDeviceId and returns the response", async () => {
+    response = { status: 200, data: { blobId: "blob-1", expiresAt: "2026-07-01T00:00:00Z" } };
+    const body = {
+      conversationId: "conv-1",
+      fromDeviceId: "dev-A",
+      targetDeviceId: "dev-B",
+      blob: "QUJDREVG",
+    };
+    const result = await makeClient().uploadRestoreBlob(body);
+    expect(captured.method).toBe("post");
+    expect(captured.url).toBe("/restore-blobs");
+    // K, nonce, descriptor — nothing key-material — must not appear in the body; only ciphertext (blob)
+    expect(sentBody()).toEqual(body);
+    expect(result).toEqual({ blobId: "blob-1", expiresAt: "2026-07-01T00:00:00Z" });
+  });
+
+  it("uploadRestoreBlob maps 413 restore-blob-too-large to a typed SecureRestoreError", async () => {
+    response = { status: 413, data: { code: "secure-chat/restore-blob-too-large" } };
+    await expect(
+      makeClient().uploadRestoreBlob({
+        conversationId: "conv-1",
+        fromDeviceId: "dev-A",
+        targetDeviceId: "dev-B",
+        blob: "QUJD",
+      })
+    ).rejects.toMatchObject({
+      name: "SecureRestoreError",
+      code: "secure-chat/restore-blob-too-large",
+      status: 413,
+    });
+  });
+
+  it("uploadRestoreBlob maps 429 rate-limited to a SecureRestoreError (instanceof)", async () => {
+    response = { status: 429, data: { code: "common/rate-limited" } };
+    await expect(
+      makeClient().uploadRestoreBlob({
+        conversationId: "conv-1",
+        fromDeviceId: "dev-A",
+        targetDeviceId: "dev-B",
+        blob: "QUJD",
+      })
+    ).rejects.toBeInstanceOf(SecureRestoreError);
+  });
+
+  it("getRestoreBlob GETs /restore-blobs/{id} and returns the row on 200", async () => {
+    const row = {
+      blobId: "blob-1",
+      conversationId: "conv-1",
+      fromDeviceId: "dev-A",
+      targetDeviceId: "dev-B",
+      blob: "QUJD",
+      createdAt: "2026-06-20T00:00:00Z",
+      expiresAt: "2026-07-01T00:00:00Z",
+    };
+    response = { status: 200, data: row };
+    const result = await makeClient().getRestoreBlob("blob-1");
+    expect(captured.method).toBe("get");
+    expect(captured.url).toBe("/restore-blobs/blob-1");
+    expect(result).toEqual(row);
+  });
+
+  it("getRestoreBlob returns null on 404 (closed existence oracle — missing/expired/not-owner all look the same)", async () => {
+    response = { status: 404, data: { code: "secure-chat/restore-blob-not-found" } };
+    const result = await makeClient().getRestoreBlob("blob-gone");
+    expect(captured.url).toBe("/restore-blobs/blob-gone");
+    expect(result).toBeNull();
+  });
+
+  it("getRestoreBlob percent-encodes the blobId in the path", async () => {
+    response = { status: 404, data: { code: "secure-chat/restore-blob-not-found" } };
+    await makeClient().getRestoreBlob("a b/c");
+    expect(captured.url).toBe("/restore-blobs/a%20b%2Fc");
+  });
+
+  it("deleteRestoreBlob DELETEs /restore-blobs/{id} and resolves on 204", async () => {
+    response = { status: 204, data: {} };
+    await expect(makeClient().deleteRestoreBlob("blob-1")).resolves.toBeUndefined();
+    expect(captured.method).toBe("delete");
+    expect(captured.url).toBe("/restore-blobs/blob-1");
+  });
+
+  it("deleteRestoreBlob resolves on 404 (idempotent — already gone is success)", async () => {
+    response = { status: 404, data: { code: "secure-chat/restore-blob-not-found" } };
+    await expect(makeClient().deleteRestoreBlob("blob-gone")).resolves.toBeUndefined();
+  });
+
+  it("deleteRestoreBlob re-throws non-404 errors (a 500 is a real failure)", async () => {
+    response = { status: 500, data: { code: "internal" } };
+    await expect(makeClient().deleteRestoreBlob("blob-1")).rejects.toMatchObject({
       response: { status: 500 },
     });
   });

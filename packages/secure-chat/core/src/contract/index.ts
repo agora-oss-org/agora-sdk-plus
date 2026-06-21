@@ -36,3 +36,11 @@ export type {
   WelcomeEnvelope,
   HandshakeBlob,
 } from "@agora-server/contract";
+
+// ── IUC restore-blob (ENVELOPE) ───────────────────────────────────────────────
+// `blob` is opaque XChaCha20-Poly1305 ciphertext (base64); `K` never appears on the wire.
+export type {
+  RestoreBlobModel,
+  UploadRestoreBlobResponse,
+  UploadRestoreBlobBody,
+} from "@agora-server/contract";

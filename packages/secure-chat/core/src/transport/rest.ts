@@ -13,6 +13,7 @@ import {
   PublishKeyPackagesBody,
   RegisterDeviceBody,
   RemoveSecureMemberBody,
+  RestoreBlobModel,
   SecureConversationMemberModel,
   SecureConversationModel,
   SecureDeviceModel,
@@ -22,7 +23,37 @@ import {
   SecureMessageModel,
   SendSecureMessageBody,
   UploadKeyBackupBody,
+  UploadRestoreBlobBody,
+  UploadRestoreBlobResponse,
 } from "../contract/index.js";
+
+/**
+ * A typed error for the restore-blob endpoints, carrying the server's stable error `code` so callers
+ * branch on the code (never a parsed string). Caps/quotas are per-deployment — `413
+ * secure-chat/restore-blob-too-large` is the authoritative cap signal; `429 common/rate-limited` is the
+ * quota signal.
+ */
+export class SecureRestoreError extends Error {
+  constructor(
+    readonly code: string,
+    readonly status: number,
+    message?: string
+  ) {
+    super(message ?? code);
+    this.name = "SecureRestoreError";
+  }
+}
+
+/** Narrow an axios error to its `{ status, code }`, or null if it isn't one. */
+function restoreErr(err: unknown): { status: number; code: string } | null {
+  if (axios.isAxiosError(err) && err.response) {
+    return {
+      status: err.response.status,
+      code: (err.response.data as { code?: string } | undefined)?.code ?? "",
+    };
+  }
+  return null;
+}
 
 /**
  * Configuration for {@link SecureChatRestClient}. The base URL and access token are read through
@@ -346,6 +377,63 @@ export class SecureChatRestClient {
       return data;
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.status === 404) return null;
+      throw err;
+    }
+  }
+
+  // ── IUC restore-blobs (ENVELOPE) ─────────────────────────────────────────────
+
+  /**
+   * Upload a sealed history blob addressed to a target device (device A). The blob is opaque
+   * XChaCha20-Poly1305 ciphertext; the key `K` is NEVER sent here (it crosses MLS only).
+   *
+   * @param body - `{ conversationId, fromDeviceId, targetDeviceId, blob }` — `blob` is base64.
+   * @returns `{ blobId, expiresAt }`.
+   * @throws {SecureRestoreError} On `413 secure-chat/restore-blob-too-large` (chunk down),
+   *   `429 common/rate-limited` (back off), or another typed server error.
+   */
+  async uploadRestoreBlob(body: UploadRestoreBlobBody): Promise<UploadRestoreBlobResponse> {
+    try {
+      const { data } = await this.http.post<UploadRestoreBlobResponse>("/restore-blobs", body);
+      return data;
+    } catch (err) {
+      const e = restoreErr(err);
+      if (e) throw new SecureRestoreError(e.code, e.status);
+      throw err;
+    }
+  }
+
+  /**
+   * Fetch a sealed blob by id (device B). **Non-destructive.** Returns `null` on `404` — the server
+   * returns the same 404 for missing, expired, and not-the-owner (closed existence oracle), so the
+   * caller treats `null` as "nothing for me" and never branches on the reason.
+   *
+   * @param blobId - The blob id (learned from the MLS `restore-envelope` message).
+   * @returns The blob row, or `null`.
+   */
+  async getRestoreBlob(blobId: string): Promise<RestoreBlobModel | null> {
+    try {
+      const { data } = await this.http.get<RestoreBlobModel>(
+        `/restore-blobs/${encodeURIComponent(blobId)}`
+      );
+      return data;
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 404) return null;
+      throw err;
+    }
+  }
+
+  /**
+   * Delete a blob after the history is durably persisted (device B). Idempotent: a `404` resolves
+   * (already gone / not ours), so a retry after a partial failure is safe.
+   *
+   * @param blobId - The blob id to remove.
+   */
+  async deleteRestoreBlob(blobId: string): Promise<void> {
+    try {
+      await this.http.delete(`/restore-blobs/${encodeURIComponent(blobId)}`);
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 404) return;
       throw err;
     }
   }
