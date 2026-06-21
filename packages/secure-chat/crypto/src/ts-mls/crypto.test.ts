@@ -166,6 +166,39 @@ describe("TsMlsSecureChatCrypto: replay/gap enforcement (classified, fail-closed
     expect(err.reason).toBe("gap-too-large");
   });
 
+  it("classifies a tampered (forged) ciphertext as reason 'unauthenticated'", async () => {
+    // A tampered application message fails the AEAD authentication tag — i.e. it is forged/corrupted,
+    // exactly the 'unauthenticated' case. (The bytes still DECODE as a valid MLS message, so this is
+    // NOT 'malformed'.) Flipping the final ciphertext byte corrupts the AEAD-protected tail.
+    const { alice, bob, aliceGroup, bobGroup } = await dm();
+    const { ciphertext } = await alice.encryptMessage(aliceGroup, toBytes("authentic"));
+    const tampered = Uint8Array.from(ciphertext);
+    tampered[tampered.length - 1] ^= 0x01; // flip one bit in the AEAD ciphertext tail
+    const err = await reject(bob.decryptMessage(bobGroup, tampered));
+    expect(err.reason).toBe("unauthenticated");
+  });
+
+  it("classifies a message from a no-longer-retained epoch as reason 'epoch-too-old'", async () => {
+    // bob retains only ONE historical epoch. Once enough Commits advance his epoch, the message's
+    // original epoch falls out of the retention window and its receiver keys are dropped, so the late
+    // arrival can no longer be decrypted — fail closed, classified 'epoch-too-old'.
+    // (ts-mls's trim uses slice(-retainKeysForEpochs); retainKeysForEpochs:0 would be slice(-0)===slice(0)
+    //  i.e. retain ALL, so we use 1 and advance TWO epochs to push epoch-1 past the window.)
+    const { alice, bob, aliceGroup, bobGroup } = await dm({ keyRetention: { retainKeysForEpochs: 1 } });
+    // alice encrypts at the current epoch BEFORE the epoch advances; bob will see it late.
+    const { ciphertext } = await alice.encryptMessage(aliceGroup, toBytes("from the old epoch"));
+    // Advance two epochs (each Commit adds a fresh device); bob processes both and drops the old epoch.
+    for (const name of ["carol", "dave"]) {
+      const dev = new TsMlsSecureChatCrypto();
+      await dev.generateDeviceIdentity({ deviceId: `${name}-web` });
+      const [kp] = await dev.generateKeyPackages(1);
+      const { commit } = await alice.addMember(aliceGroup, { deviceId: `${name}-row`, keyPackage: kp!.keyPackage });
+      await bob.processCommit(bobGroup, commit);
+    }
+    const err = await reject(bob.decryptMessage(bobGroup, ciphertext));
+    expect(err.reason).toBe("epoch-too-old");
+  });
+
   it("applies the configured keyRetention window AFTER a group-state import (not reverted to defaults)", async () => {
     const { alice, bob, aliceGroup, bobGroup } = await dm({ keyRetention: { maximumForwardRatchetSteps: 3 } });
     // Rebuild bob's group on a fresh instance — also configured tight — from the exported state alone.

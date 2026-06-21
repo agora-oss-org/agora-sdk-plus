@@ -43,7 +43,15 @@ function classifyDecryptError(err: unknown): SecureChatDecryptError {
   if (/desired gen(?:eration)? in the past/i.test(msg)) reason = "replay";
   else if (/too far in the future/i.test(msg)) reason = "gap-too-large";
   else if (/epoch too old|former epoch/i.test(msg)) reason = "epoch-too-old";
-  else if (name === "CryptoVerificationError" || /signature|verif|auth/i.test(msg)) reason = "unauthenticated";
+  // Authentication failure = the message is forged/corrupted. Two ts-mls signals, both reached only
+  // AFTER the secret-tree ratchet (replay/gap) and epoch checks above, so on the decrypt path they are
+  // unambiguously authentication failures: a failed FramedContent signature (CryptoVerificationError),
+  // and - the common active-attacker / byte-flip case - a failed AEAD tag, which ts-mls wraps as a
+  // CryptoError. We key off the NAME because the wrapped message is primitive-dependent and opaque
+  // (WebCrypto AES-GCM throws "OperationError: The operation failed..."; @noble throws "invalid ... tag");
+  // the /tag/ regex is just a bonus for the @noble path. Classify both as "unauthenticated" so a
+  // tampered ciphertext is reported as forged, not as a generic "unknown" failure.
+  else if (name === "CryptoVerificationError" || name === "CryptoError" || /signature|verif|auth|tag/i.test(msg)) reason = "unauthenticated";
   else if (name === "CodecError" || /decode|malformed/i.test(msg)) reason = "malformed";
   return new SecureChatDecryptError(reason, `secure-chat: message decrypt rejected (${reason})`);
 }

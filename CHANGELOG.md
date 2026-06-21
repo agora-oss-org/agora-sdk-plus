@@ -23,6 +23,19 @@ All notable changes to Agora SDK Plus are documented here, following
   single documented deviation is the simplified hash input (we adopt the content format, not MIMI
   federation, so there is no senderUri/roomUri). SHA-256 via `@noble/hashes` (now a core dependency).
 
+### Fixed
+
+- **A tampered/forged application-message ciphertext is now classified `unauthenticated`, not
+  `unknown`.** The ts-mls decrypt-error classifier (`secure-chat-crypto/ts-mls`) only mapped a failed
+  *signature* (`CryptoVerificationError`) to `unauthenticated`, but the common active-attacker /
+  byte-flip case fails the AEAD tag first, which ts-mls surfaces as a `CryptoError` with a
+  primitive-dependent opaque message (WebCrypto AES-GCM: `OperationError`; @noble: `invalid … tag`).
+  That fell through to `unknown`. The classifier now keys off the error **name** (`CryptoError`), so an
+  AEAD authentication failure is reported as forged. Behavior already failed closed (the message was
+  always dropped); this only corrects the security-relevant `SecureDecryptFailureReason`. Added wrapper
+  tests pinning the `unauthenticated` and `epoch-too-old` reasons end-to-end, plus raw ts-mls/@noble
+  error-string characterization pins so a future upstream reword fails loudly with a minimal repro.
+
 ## [0.7.0] — 2026-06-20
 
 ### Added
