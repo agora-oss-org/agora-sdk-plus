@@ -2,7 +2,7 @@
 
 **Status:** approved design — ready for an implementation plan
 **Date:** 2026-06-20
-**Scope:** Adopt the IETF **MIMI content format** (`draft-ietf-mimi-content`, the CBOR-encoded
+**Scope:** Adopt the IETF **MIMI content format** (`draft-ietf-mimi-content-08`, the CBOR-encoded
 `MimiContent` structure) as secure-chat's message **content** payload, replacing the bespoke `v:2`
 JSON frame that was only ever designed, never shipped. This gives richer messages (replies, reactions,
 edits/deletes) in a standards-shaped container and makes the SDK **interop-ready** for a future MIMI
@@ -69,32 +69,39 @@ core/src/content/
 
 We **encode and decode the complete `MimiContent`** structure; the hook **surfaces Tier 2**.
 
-`MimiContent` (per `draft-ietf-mimi-content`) fields the codec models:
+`MimiContent` (per `draft-ietf-mimi-content-08`, 2 Mar 2026) fields the codec models:
 
 - `salt` — per-message CSPRNG bytes (unlinkability of the content hash);
 - `replaces` — content-hash of a message this one replaces (edit / delete / un-react);
 - `topicId` — threading id (Tier 3; encoded, not surfaced);
-- `expires` — absolute expiry (Tier 3; encoded, not surfaced);
-- `inReplyTo` — `{ hash, hashAlgorithm }` reply target (content-hash);
-- `lastSeen` — array of content-hashes seen before sending (Tier 3; encoded, not surfaced);
-- `extensions` — extension map (round-tripped opaquely);
+- `expires` — absolute expiry (`Expiration = [relative: bool, time: uint]`; Tier 3; encoded, not surfaced);
+- `inReplyTo` — a **bare 32-byte `MessageId`** (`Uint8Array | null`) — the content-hash of the reply
+  target. (Note: the doc previously modeled this as `{ hash, hashAlgorithm }` but draft-08 uses a
+  bare 32-byte `bstr.size 32`; the `MessageDerivedValue` type is removed accordingly.)
+- `extensions` — extension map (round-tripped opaquely); `lastSeen` is **not in draft-08** (removed);
 - `nestedPart` — the body tree. A `Part` is a cardinality-tagged union: **NullPart** (tombstone),
   **SinglePart** `{ contentType, content, … }`, **ExternalPart** `{ contentType, url, size, enc… }`
   (Tier-3 attachments — encoded, not surfaced), **MultiPart** `{ partSemantics, parts[] }`.
+
+> **`contentHash` / MessageId derivation — deliberate documented deviation:** we emit
+> `0x01 || sha256(canonical CBOR)[0..30]` (a MessageId-shaped 32-byte value) but the hash INPUT is
+> simplified — no MIMI federation `senderUri`/`roomUri` — because this SDK adopts the content format,
+> not MIMI federation. The WIRE CBOR is draft-08-faithful; only the hash input deviates (documented in
+> the `mimi-content.ts` file header).
 
 **Tier-2 feature → `MimiContent` mapping (surfaced):**
 
 | Feature | Encoding |
 |---|---|
 | Text message | `nestedPart` = a SinglePart, `contentType: "text/markdown"`, `content` = the UTF-8 body; fresh `salt`. |
-| Reply | as a text message **plus** `inReplyTo = { hash: <target contentHash>, hashAlgorithm: SHA-256 }`. |
+| Reply | as a text message **plus** `inReplyTo = <target contentHash>` (a bare 32-byte `MessageId`). |
 | Edit | a text message with `replaces = <target contentHash>` and the new body. |
 | Delete | `replaces = <target contentHash>` with a **NullPart** body (tombstone). |
 | Reaction | a message that `inReplyTo`-references the target, body = the reaction token. |
 | Un-react | `replaces = <your reaction message's contentHash>` with a **NullPart** body. |
 
-> The exact reaction content-type / disposition encoding is pinned against `draft-ietf-mimi-content-07`
-> during implementation; MIMI models reactions as ordinary messages, which fits the reducer cleanly.
+> The exact reaction content-type / disposition encoding follows `draft-ietf-mimi-content-08` (2 Mar
+> 2026); MIMI models reactions as ordinary messages, which fits the reducer cleanly.
 
 ## Data flow
 

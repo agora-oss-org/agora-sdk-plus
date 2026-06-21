@@ -123,32 +123,14 @@ is an **MLS application message** with a typed frame — the blind server sees o
 
 ### Wire framing (the typed application-message payload)
 
-Today a decrypted application message is raw UTF-8 chat text (after unpadding). IUC requires a
-discriminator so control traffic can share the channel:
-
-```jsonc
-// the plaintext INSIDE the MLS application message (before padding), v2 framing:
-{ "v": 2, "kind": "chat", "text": "hello 💜" }
-{ "v": 2, "kind": "iuc",  "iuc": { "transferId": "…",
-                                   "type": "restore-request" | "restore-offer" | "restore-declined"
-                                          | "restore-chunk" | "restore-envelope" | "restore-complete"
-                                          | "restore-ack",
-                                   /* type-specific fields per Act II */ } }
-```
-
-- `v:1` (legacy raw text) stays readable for back-compat; new sends emit `v:2`.
-- The chat hooks route `kind:"chat"` to the message list and `kind:"iuc"` to the IUC state machine.
-  Control messages are **never** rendered as chat and **never** stored as history.
-- The server-relayed `restore-blob` (envelope variant) is opaque base64, stored/relayed exactly like a
-  Welcome or passphrase backup; it carries no plaintext and no `K`.
-- **Capability negotiation:** never send `v:2` IUC frames to a `v:1`-only peer — advertise frame support
-  at the device/handshake level and fall back. (Legacy `v:1` chat must still render on a `v:2` client —
-  the back-compat direction above.)
-- **Hardened parsing (untrusted input):** the decrypted frame is **attested, not verified** input from A,
-  so enforce a max frame size, a max chunk count/`total`, and reject malformed JSON — a
-  malicious-or-buggy A must not be able to OOM/crash B with a chunk flood. Per CLAUDE.md §1: validate,
-  then decode, everything relayed — this holds even though A is a trusted *peer*, because "attested" ≠
-  "well-formed".
+> **Superseded by `docs/superpowers/specs/2026-06-20-mimi-cbor-content-design.md`.** The bespoke
+> `{ "v": 2, "kind": "chat"|"iuc", … }` JSON frame below is **replaced** by the MIMI design's
+> **`[kind:1][payload]` routing byte + CBOR**: `kind 0` = MimiContent (user chat), `kind 1` = IUC
+> control. IUC control messages ride under `kind 1`, encoded with the same deterministic CBOR codec
+> (the control *semantics* — request/offer/chunk/envelope/complete/ack — remain IUC's to define). There
+> is **no `v:1` legacy and no capability negotiation** (zero users, clean break). The canonical-CBOR
+> `contentHash` also gives IUC a pinned canonical form, **closing Known-Issue #12** (sha256
+> canonicalization across web/native).
 
 ### ENVELOPE — settled server contract (2026-06-20)
 
@@ -241,7 +223,9 @@ truth. The load-bearing facts the SDK-side ENVELOPE design must honor:
    + `decrypt` unframing). Must stay back-compatible with any `v:1` history already stored and with
    peers that only emit `v:1` during rollout. Add **capability negotiation** (never send `v:2` to a
    `v:1`-only peer) and a **bounded, hardened parser** for the decrypted frame (max size / max chunk
-   count / reject malformed JSON) — see Wire framing.
+   count / reject malformed JSON) — see Wire framing. *(The `v:2`/capability-negotiation machinery is
+   dropped under the MIMI clean break — the `[kind][payload]` routing byte replaces the JSON frame
+   with no back-compat burden; zero users, clean break.)*
 8. **SAS UX.** The code word is derived deterministically from the **post-join MLS exporter secret** on
    *both* sides and must render identically (wordlist/locale). A weak/rushed verbal check is the practical
    soft spot — the cryptography is only as strong as the human comparison. (Derivation source is
@@ -259,7 +243,7 @@ truth. The load-bearing facts the SDK-side ENVELOPE design must honor:
 12. **`sha256` canonicalization.** "sha256 over canonical JSON" only works if the canonical form is
     pinned identically on both sides — key order, whitespace, and Unicode normalization (NFC) of
     `plaintext`. Specify the exact canonicalization, or honest transfers fail the integrity check across
-    web/native.
+    web/native. **(Closed 2026-06-20 by the MIMI CBOR content design — canonical CBOR is the pinned hash form.)**
 
 ## Testing strategy
 
@@ -300,8 +284,9 @@ truth. The load-bearing facts the SDK-side ENVELOPE design must honor:
   source is A's store; its sink is B's store. No store, no IUC.
 - **Reuses** the blind-relay pattern for the envelope blob (same shape as Welcomes / passphrase
   backups) and the MLS channel + `SecureChatCrypto` seam for all control traffic.
-- **Adds** a `v:2` typed application-message frame (chat vs IUC control) and an IUC state machine,
-  most naturally a `useSecureRestore` hook + a small `iuc/` module under `secure-chat/core`.
+- **Adds** a typed application-message frame (chat vs IUC control) — now the `[kind][payload]` routing
+  byte from the MIMI design (supersedes the former `v:2` JSON frame; see Wire framing above) — and an
+  IUC state machine, most naturally a `useSecureRestore` hook + a small `iuc/` module under `secure-chat/core`.
 - **Storage** stays behind the swappable `SecureChatStore` seam; native (Phase 3) puts the envelope
   `K` / restored-store key in Keychain/Keystore, web in a non-extractable WebCrypto key.
 - **At-rest (the sink).** B's restored plaintext lands in the durable `SecureChatStore`, which on web

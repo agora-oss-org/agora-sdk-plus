@@ -372,7 +372,7 @@ describe("browser runtime: StrictMode + IndexedDB + real ts-mls under the hooks"
     );
     bob1.rerender({ convId: conversationId });
     await waitFor(() => {
-      const m = bob1.result.current.msgs.messages.find((x) => x.content?.body ===PLAINTEXT);
+      const m = bob1.result.current.msgs.messages.find((x) => x.content?.body === PLAINTEXT);
       expect(m?.status).toBe("ok");
     }, WAIT);
     bob1.unmount(); // "close the tab"
@@ -444,7 +444,7 @@ describe("browser runtime: StrictMode + IndexedDB + real ts-mls under the hooks"
     await waitFor(() => expect(bob.result.current.convs.conversations.map((c) => c.id)).toContain(conversationId), WAIT);
     bob.rerender({ convId: conversationId });
     await waitFor(() => {
-      const m = bob.result.current.msgs.messages.find((x) => x.content?.body ===M1);
+      const m = bob.result.current.msgs.messages.find((x) => x.content?.body === M1);
       expect(m?.status).toBe("ok");
     }, WAIT);
 
@@ -462,7 +462,9 @@ describe("browser runtime: StrictMode + IndexedDB + real ts-mls under the hooks"
     // (B) Alice's own M1 renders `ok` AFTER reload — she can't decrypt her own single-use message, so it
     // can only come from the local plaintext store. Prove the ratchet was never touched for it.
     await waitFor(() => {
-      const m = msgs2.result.current.messages.find((x) => x.model.conversationId === conversationId && x.content?.body === M1);
+      const m = msgs2.result.current.messages.find(
+        (x) => x.model.conversationId === conversationId && x.content?.body === M1
+      );
       expect(m?.status).toBe("ok");
     }, WAIT);
     expect(decryptSpy2).not.toHaveBeenCalled(); // served from store, ratchet untouched
@@ -472,7 +474,7 @@ describe("browser runtime: StrictMode + IndexedDB + real ts-mls under the hooks"
 
     // The decisive assertion: Bob decrypts M2 as `ok` — NOT rejected as a replay.
     await waitFor(() => {
-      const m = bob.result.current.msgs.messages.find((x) => x.content?.body ===M2);
+      const m = bob.result.current.msgs.messages.find((x) => x.content?.body === M2);
       expect(m?.status).toBe("ok");
     }, WAIT);
     // And Bob never marked M2 (or anything) as a replay/rejected.

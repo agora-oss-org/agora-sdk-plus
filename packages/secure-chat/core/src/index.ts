@@ -80,6 +80,23 @@ export type { PaddingPolicy } from "./util/padding.js";
 export { computeSafetyNumber } from "./util/safety-number.js";
 export type { SafetyNumber } from "./util/safety-number.js";
 
+// ── MIMI content (CBOR message content + routing frame + fold) ─────────────────
+export {
+  encodeMimiContent, decodeMimiContent, contentHash,
+  Cardinality, Disposition, HashAlg, PartSemantics, MIMI_LIMITS,
+} from "./content/mimi-content.js";
+export type {
+  MimiContent, Part, NullPart, SinglePart, ExternalPart, MultiPart, Expiration,
+} from "./content/mimi-content.js";
+export {
+  buildPost, buildReply, buildEdit, buildDelete, buildReaction, buildUnreact,
+} from "./content/builders.js";
+export { frameContent, unframe, ContentKind } from "./content/frame.js";
+export type { RenderedContent } from "./hooks/message-fold.js";
+// Low-level CBOR codec (advanced; the IUC control channel reuses it under kind 1).
+export { encode as encodeCbor, decode as decodeCbor, CborTag } from "./content/cbor.js";
+export type { CborValue, CborMap, CborLimits } from "./content/cbor.js";
+
 // ── dev logging (off by default; see util/debug) ──────────────────────────────
 export { setSecureChatDebug, isSecureChatDebugEnabled } from "./util/debug.js";
 export type { SecureChatDebugLevel, SecureChatDebugLogger } from "./util/debug.js";
