@@ -341,7 +341,7 @@ describe("two-client secure chat under REAL ts-mls + the real hooks", () => {
     await waitFor(() => {
       const m = bob.result.current.msgs.messages.find((x) => x.model.conversationId === conversationId);
       expect(m?.status).toBe("ok");
-      expect(m?.plaintext).toBe(PLAINTEXT);
+      expect(m?.content?.body).toBe(PLAINTEXT);
     }, WAIT);
     expect(await bobStore.get(`group:${conversationId}`)).not.toBeNull();
 
@@ -400,7 +400,7 @@ describe("two-client secure chat under REAL ts-mls + the real hooks", () => {
       await aliceMsgs.result.current.sendMessage(FIRST);
     });
     await waitFor(() => {
-      const m = bob.result.current.msgs.messages.find((x) => x.plaintext === FIRST);
+      const m = bob.result.current.msgs.messages.find((x) => x.content?.body === FIRST);
       expect(m?.status).toBe("ok");
     }, WAIT);
 
@@ -408,7 +408,7 @@ describe("two-client secure chat under REAL ts-mls + the real hooks", () => {
       await aliceMsgs.result.current.sendMessage(SECOND);
     });
     await waitFor(() => {
-      const m = bob.result.current.msgs.messages.find((x) => x.plaintext === SECOND);
+      const m = bob.result.current.msgs.messages.find((x) => x.content?.body === SECOND);
       expect(m?.status).toBe("ok");
     }, WAIT);
     aliceMsgs.unmount();

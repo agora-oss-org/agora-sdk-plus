@@ -402,7 +402,7 @@ describe("two-client handshake (hook orchestration)", () => {
     await waitFor(() => {
       const m = bob.result.current.msgs.messages.find((x) => x.model.conversationId === conversationId);
       expect(m?.status).toBe("ok");
-      expect(m?.plaintext).toBe(PLAINTEXT);
+      expect(m?.content?.body).toBe(PLAINTEXT);
     });
 
     bob.unmount();
@@ -438,7 +438,7 @@ describe("two-client handshake (hook orchestration)", () => {
     // ...but it can never decrypt: no group was joined → exactly the "waiting for key update" state.
     const m = bob.result.current.msgs.messages.find((x) => x.model.conversationId === conversationId);
     expect(m?.status).toBe("pending");
-    expect(m?.plaintext).toBeNull();
+    expect(m?.content).toBeNull();
     expect(await bobStore.get(`group:${conversationId}`)).toBeNull();
 
     bob.unmount();
@@ -463,7 +463,7 @@ describe("two-client handshake (hook orchestration)", () => {
 
     // Bob catches up + decrypts the first message.
     await waitFor(() => {
-      const m = bob.result.current.msgs.messages.find((x) => x.plaintext === FIRST);
+      const m = bob.result.current.msgs.messages.find((x) => x.content?.body === FIRST);
       expect(m?.status).toBe("ok");
     });
 
@@ -480,7 +480,7 @@ describe("two-client handshake (hook orchestration)", () => {
     aliceMsgs.unmount();
 
     await waitFor(() => {
-      const m = bob.result.current.msgs.messages.find((x) => x.plaintext === SECOND);
+      const m = bob.result.current.msgs.messages.find((x) => x.content?.body === SECOND);
       expect(m?.status).toBe("ok");
     });
 
@@ -528,7 +528,7 @@ describe("two-client handshake (hook orchestration)", () => {
     await waitFor(() => {
       const m = bob.result.current.msgs.messages.find((x) => x.model.conversationId === conversationId);
       expect(m?.status).toBe("ok");
-      expect(m?.plaintext).toBe(PLAINTEXT);
+      expect(m?.content?.body).toBe(PLAINTEXT);
     });
     expect(await bobStore.get(`group:${conversationId}`)).not.toBeNull();
 

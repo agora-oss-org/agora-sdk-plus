@@ -12,7 +12,15 @@ import { SecureChatRestClient } from "../transport/rest.js";
 import { SecureChatSocketClient } from "../transport/socket.js";
 import { toBase64 } from "../util/base64.js";
 import { padPlaintext } from "../util/padding.js";
+import { frameContent, ContentKind } from "../content/frame.js";
+import { encodeMimiContent } from "../content/mimi-content.js";
+import { buildPost } from "../content/builders.js";
 import type { SecureDeviceModel, SecureHandshakeModel, SecureMessageModel } from "../contract/index.js";
+
+// A real outbound message is MimiContent → content frame → padding frame (what the send path encrypts).
+function mimiFrame(text: string) {
+  return padPlaintext(frameContent(ContentKind.Mimi, encodeMimiContent(buildPost(text))));
+}
 
 const bobRow: SecureDeviceModel = {
   id: "bob-row", projectId: "p", userId: "bob", deviceId: "bob-dev", displayName: null,
@@ -166,7 +174,7 @@ describe("useSecureHandshakes", () => {
 
   it("live flush: a message that arrived before the group resolves decrypts once the Welcome lands", async () => {
     const { creator, group, welcomePayload } = await makeGroupAndWelcome();
-    const { ciphertext } = await creator.encryptMessage(group, padPlaintext(new TextEncoder().encode("hello bob")));
+    const { ciphertext } = await creator.encryptMessage(group, mimiFrame("hello bob"));
     const msgRow: SecureMessageModel = {
       id: "m1", projectId: "p", conversationId: "conv-1", senderUserId: "alice", senderDeviceId: "alice-row",
       epoch: "0", ciphertext: toBase64(ciphertext), contentType: "text/plain", createdAt: "",
@@ -191,14 +199,14 @@ describe("useSecureHandshakes", () => {
     await waitFor(() =>
       expect(result.current.msgs.messages.find((m) => m.model.id === "m1")).toBeDefined()
     );
-    expect(result.current.msgs.messages.find((m) => m.model.id === "m1")?.plaintext).toBeNull();
+    expect(result.current.msgs.messages.find((m) => m.model.id === "m1")?.content).toBeNull();
 
     // The Welcome lands live → join → group-version bump → useSecureMessages re-resolves + flushes.
     await act(async () => {
       handlers["secure:welcome"]!(welcomeRow("1", welcomePayload));
     });
     await waitFor(() =>
-      expect(result.current.msgs.messages.find((m) => m.model.id === "m1")?.plaintext).toBe("hello bob")
+      expect(result.current.msgs.messages.find((m) => m.model.id === "m1")?.content?.body).toBe("hello bob")
     );
   });
 

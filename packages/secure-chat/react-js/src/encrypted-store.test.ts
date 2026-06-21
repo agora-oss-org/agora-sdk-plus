@@ -153,7 +153,7 @@ describe("EncryptedStore", () => {
     expect(await base.list("")).toContain("__enc__");
   });
 
-  it("repository round-trips device/group/message-plaintext over the encrypted store (obliviousness)", async () => {
+  it("repository round-trips device/group/message-content over the encrypted store (obliviousness)", async () => {
     const repo = new SecureChatRepository(enc);
 
     await repo.saveDevice({ deviceId: "dev-1", deviceState: bytes(1, 2, 250), device: null });
@@ -165,17 +165,19 @@ describe("EncryptedStore", () => {
     expect(Array.from((await repo.loadGroupState("c1")) as Uint8Array)).toEqual([7, 8, 9]);
     expect(await repo.listGroupConversationIds()).toEqual(["c1"]);
 
-    await repo.saveMessagePlaintext("c1", "m1", "hi my bad bitch! 💜");
-    expect(await repo.loadMessagePlaintext("c1", "m1")).toBe("hi my bad bitch! 💜");
+    // Message content is now stored as raw content-frame bytes (not text); round-trip a Uint8Array.
+    const contentBytes = new TextEncoder().encode("hi my bad bitch! 💜");
+    await repo.saveMessageContent("c1", "m1", contentBytes);
+    expect(Array.from((await repo.loadMessageContent("c1", "m1")) as Uint8Array)).toEqual(Array.from(contentBytes));
   });
 
   it("no-leak scan: a stored msg: value never contains the message's UTF-8 bytes", async () => {
     const repo = new SecureChatRepository(enc);
     const secret = "the nuclear codes are 0000";
-    await repo.saveMessagePlaintext("c1", "m1", secret);
+    const secretBytes = new TextEncoder().encode(secret);
+    await repo.saveMessageContent("c1", "m1", secretBytes);
 
     // Scan EVERY raw base-store value for the plaintext byte sequence.
-    const secretBytes = new TextEncoder().encode(secret);
     const rawKeys = await base.list("");
     for (const k of rawKeys) {
       const raw = (await base.get(k)) as Uint8Array;
