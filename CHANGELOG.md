@@ -8,6 +8,7 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Added
 
+- Message fold reducer (`secure-chat-core/hooks/message-fold`) — folds reactions/edits/deletes/un-reacts onto their target by MIMI content-hash, with out-of-order buffering and reload-stable re-folding.
 - Tier-2 MimiContent builders (`secure-chat-core/content/builders`) — `post/reply/edit/delete/react/un-react` with fresh CSPRNG salts (draft-08 shape).
 - Content routing frame (`secure-chat-core/content/frame`) — `[kind:1][payload]` discriminator (`0`=MimiContent, `1`=IUC control, reserved).
 - Deterministic CBOR codec (`secure-chat-core/content/cbor`) — canonical encode + strict, bounded
