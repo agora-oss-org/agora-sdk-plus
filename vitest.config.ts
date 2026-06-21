@@ -20,6 +20,10 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["packages/**/src/**/*.test.{ts,tsx}"],
+    // Restore Node's `ArrayBuffer` as the global so jsdom tests share Node's WebCrypto realm — without
+    // it, ts-mls's real-MLS path fails on Node 20 (cross-realm bare ArrayBuffer rejected by importKey).
+    // No-op under the `node` environment. See test-support/jsdom-webcrypto-realm.ts for the full why.
+    setupFiles: [fromHere("test-support/jsdom-webcrypto-realm.ts")],
     alias: {
       "@agora-sdk/secure-chat-crypto/testing": fromHere(
         "packages/secure-chat/crypto/src/testing.ts"

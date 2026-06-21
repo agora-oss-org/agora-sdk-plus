@@ -127,6 +127,8 @@ All notable changes to Agora SDK Plus are documented here, following
   peer warnings are dev-toolchain-only (`react-native@0.79` requires React 19; Expo's CLI pulls a
   transitive `react-dom@19`) and are shared with the `agora-sdk` fork — not emitted by `@agora-sdk/core`
   (which itself peers `react ^18 || ^19`).
+- **CI push trigger fixed (`ci.yml`: `branches: [main]` → `[root]`).** This repo's trunk is `root`, so
+  the push-CI job never ran; it now runs on trunk pushes. The Node test matrix stays `[20, 22]`.
 
 ### Deprecated
 
@@ -138,7 +140,18 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Fixed
 
-- **A message sent after reload was rejected by the peer as a replay (`"Desired gen in the past"`).**
+- **Real-MLS tests (ts-mls) failed under Node 20 in CI — `crypto.subtle.importKey` cross-realm error.**
+  The hook/browser-runtime tests that exercise the real **ts-mls** crypto run under jsdom, but vitest
+  executes each test module in its own vm realm whose `ArrayBuffer` / `Uint8Array` intrinsics differ
+  from Node's main realm — where `crypto.subtle` lives. ts-mls / `@hpke` / `@noble` build key material
+  with the vm-realm constructors and hand a *bare* `ArrayBuffer` to `importKey`; **Node 20** brand-checks
+  it with `instanceof` against its own `ArrayBuffer` and rejects the cross-realm value (`"2nd argument is
+  not instance of ArrayBuffer, Buffer, TypedArray, or DataView"`). Node 22 relaxed that check, so the
+  failure was Node-20-only and invisible locally. A real browser has a single realm, so this can never
+  happen in production — it is purely a split-realm test artifact. Fixed with a vitest `setupFiles`
+  (`test-support/jsdom-webcrypto-realm.ts`) that restores Node's `ArrayBuffer` + `Uint8Array` as the test
+  globals, so binary values share Node's WebCrypto realm (a no-op under the `node` environment). The full
+  suite now passes on both Node 20 and Node 22; **no product or crypto code changed.**
   An MLS application message advances the leaf's single-use **send ratchet**, but the SDK only persisted
   group state on join/Commit — never after a send. So on reload the SDK re-imported the pre-send state,
   the send ratchet rewound to an already-consumed generation, and the next message reused a generation
