@@ -6,6 +6,12 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- Deterministic CBOR codec (`secure-chat-core/content/cbor`) — canonical encode + strict, bounded
+  decode over the MimiContent subset (no floats/indefinite/bignum); the basis for MIMI content +
+  stable content hashing.
+
 ## [0.7.0] — 2026-06-20
 
 ### Added
