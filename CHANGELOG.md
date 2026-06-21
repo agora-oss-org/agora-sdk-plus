@@ -152,6 +152,7 @@ All notable changes to Agora SDK Plus are documented here, following
   (`test-support/jsdom-webcrypto-realm.ts`) that restores Node's `ArrayBuffer` + `Uint8Array` as the test
   globals, so binary values share Node's WebCrypto realm (a no-op under the `node` environment). The full
   suite now passes on both Node 20 and Node 22; **no product or crypto code changed.**
+- **A message sent after reload was rejected by the peer as a replay (`"Desired gen in the past"`).**
   An MLS application message advances the leaf's single-use **send ratchet**, but the SDK only persisted
   group state on join/Commit — never after a send. So on reload the SDK re-imported the pre-send state,
   the send ratchet rewound to an already-consumed generation, and the next message reused a generation
