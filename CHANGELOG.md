@@ -12,6 +12,13 @@ All notable changes to Agora SDK Plus are documented here, following
   decode over the MimiContent subset (no floats/indefinite/bignum); the basis for MIMI content +
   stable content hashing.
 - Differential CBOR oracle test cross-checking the codec against `cbor2` (test-only devDependency) over randomized in-subset structures.
+- `MimiContent` types + codec + `contentHash` (`secure-chat-core/content/mimi-content`) — the full
+  draft-ietf-mimi-content-08 wire structure (faithful CDDL: `NestedPart` wrapper, `Expiration`,
+  32-byte `MessageId` reply/replace refs, multipart with `partSemantics`, ≥2-parts) encoded/decoded
+  and schema-validated, fail-closed on untrusted peer bytes. `contentHash` returns a 32-byte
+  MessageId-shaped value (`0x01 || sha256(canonical CBOR)[0..30]`) — the wire is interop-faithful; the
+  single documented deviation is the simplified hash input (we adopt the content format, not MIMI
+  federation, so there is no senderUri/roomUri). SHA-256 via `@noble/hashes` (now a core dependency).
 
 ## [0.7.0] — 2026-06-20
 

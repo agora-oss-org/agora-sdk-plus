@@ -62,6 +62,9 @@ importers:
       '@agora-server/contract':
         specifier: ^0.9.3
         version: 0.9.3
+      '@noble/hashes':
+        specifier: 2.0.1
+        version: 2.0.1
       axios:
         specifier: ^1.4.0
         version: 1.17.0
