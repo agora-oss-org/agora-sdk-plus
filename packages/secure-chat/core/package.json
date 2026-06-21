@@ -43,6 +43,7 @@
   "dependencies": {
     "@agora-sdk/secure-chat-crypto": "workspace:*",
     "@agora-server/contract": "^0.9.3",
+    "@noble/ciphers": "^2.1.1",
     "@noble/hashes": "2.0.1",
     "axios": "^1.4.0",
     "socket.io-client": "^4.8.1"

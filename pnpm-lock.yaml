@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@agora-server/contract':
+        specifier: ^0.13.0
+        version: 0.13.0
     devDependencies:
       '@testing-library/react':
         specifier: ^14.3.1
@@ -62,6 +66,9 @@ importers:
       '@agora-server/contract':
         specifier: ^0.9.3
         version: 0.9.3
+      '@noble/ciphers':
+        specifier: ^2.1.1
+        version: 2.1.1
       '@noble/hashes':
         specifier: 2.0.1
         version: 2.0.1
@@ -243,6 +250,9 @@ packages:
 
   '@agora-server/contract@0.12.1':
     resolution: {integrity: sha512-UEbgXdE6NC4PIY2XdV6odVcL8vCvcZawgpv5qosTIG6R47vArmK/Ae+xPQS0UVALXlX2ujTbCfnqyNK3BNBq5Q==}
+
+  '@agora-server/contract@0.13.0':
+    resolution: {integrity: sha512-KqNzbmKzMVCuDDiJ5xJrt1NgJYRwQNJteGIHXBBRcJYoI1W6WPZgCiEzuzokC7zMQyoDsAVWzdmkbZs0hDC4Fg==}
 
   '@agora-server/contract@0.9.3':
     resolution: {integrity: sha512-QKUZMrEdPtnmbR3Zq+tNuzYGs7j4buzIrBxR2PkAVkEZx/VMQ4RwE4EGctiQD7+MG45S8wQdVpH6D2V8bzUuog==}
@@ -3647,6 +3657,10 @@ packages:
 snapshots:
 
   '@agora-server/contract@0.12.1':
+    dependencies:
+      zod: 3.25.76
+
+  '@agora-server/contract@0.13.0':
     dependencies:
       zod: 3.25.76
 
