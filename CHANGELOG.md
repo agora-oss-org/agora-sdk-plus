@@ -13,6 +13,10 @@ All notable changes to Agora SDK Plus are documented here, following
 - IUC ENVELOPE blob AEAD (`secure-chat-core/restore/seal`) — XChaCha20-Poly1305 seal/open with a full-entropy CSPRNG key and the transfer descriptor bound as canonical-CBOR AAD; fail-closed.
 - Public surface for IUC ENVELOPE foundation exported from `@agora-sdk/secure-chat-core` — all restore/seal, restore/control, and restore-blob transport/contract symbols now accessible from the package root.
 
+### Changed
+
+- Post-review hardening of the IUC ENVELOPE foundation: `decodeIucControl` now bounds untrusted input tighter (`maxBytes`/`maxDepth` for the flat control messages, not just `maxItems`); `restoreAad` drops the `unknown` cast for compile-time-checked CBOR entries; added a negative-blindness test asserting the sealed blob never embeds the descriptor routing strings (AAD is bound, not embedded). Documented the slice-#2 AAD-reconstruction mapping and the `count` (history rows) vs `chunkCount` (blob chunks) distinction in the design spec.
+
 ## [0.8.0] — 2026-06-20
 
 ### Changed

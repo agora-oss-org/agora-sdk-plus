@@ -7,7 +7,7 @@
 // different transfer or chunk slot. `K`/plaintext/nonce never leave the client and are never logged.
 
 import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
-import { encode, type CborMap } from "../content/cbor.js";
+import { encode, type CborMap, type CborValue } from "../content/cbor.js";
 
 /** XChaCha20-Poly1305 extended nonce — 24 bytes, safe with random nonces. */
 const NONCE_BYTES = 24;
@@ -56,15 +56,17 @@ export function generateRestoreKey(): Uint8Array {
  * @returns Canonical CBOR bytes.
  */
 export function restoreAad(d: RestoreDescriptor): Uint8Array {
-  const m: CborMap = new Map<number, unknown>([
+  // Typed entries keep each value compile-time-checked as a CborValue; the single `as CborMap` is the
+  // honest cast for Map's invariant key type (a `number` key IS a valid CborValue), not a safety bypass.
+  const entries: [number, CborValue][] = [
     [0, d.transferId],
     [1, d.conversationId],
     [2, d.fromDeviceId],
     [3, d.targetDeviceId],
     [4, d.chunkIndex],
     [5, d.chunkCount],
-  ]) as CborMap;
-  return encode(m);
+  ];
+  return encode(new Map(entries) as CborMap);
 }
 
 /**

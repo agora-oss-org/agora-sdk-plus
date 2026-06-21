@@ -138,7 +138,8 @@ The transfer's control messages are MLS application messages framed with the MIM
 - **Seal (`seal.test.ts`):** `seal→open` round-trip; wrong-`K` → throws; single flipped ciphertext byte
   → throws; **mismatched-AAD descriptor → throws** (the replay-into-another-slot defense); `K` is 32
   bytes and two generated keys differ; the sealed blob never contains the plaintext as a byte
-  subsequence (blindness); a too-short blob fails closed.
+  subsequence — nor the descriptor routing strings (`conversationId`/`fromDeviceId`), since the AAD is
+  bound, not embedded (blindness); a too-short blob fails closed.
 - **Control codec (`control.test.ts`):** round-trip each of the six messages; `restore-envelope`
   round-trips `K`/`blobId`/`count`/`sha256` faithfully; **fail-closed decode** — unknown `type`,
   truncated input, wrong arity/types, oversize all throw; an encoded `restore-envelope` is verified to
@@ -147,6 +148,29 @@ The transfer's control messages are MLS application messages framed with the MIM
   `fromDeviceId` and base64 `blob`; `getRestoreBlob` 404 → `null`, 200 → `RestoreBlobModel`;
   `deleteRestoreBlob` 404 → resolves; `413`/`429` → typed `SecureRestoreError` with the right `code`.
   **Cross-check: no test path puts `K` in a REST request body** (server-blindness analog).
+
+## Slice #2 hand-off — reconstructing the AAD on the open side (settled)
+
+The seal binds the **6-field `RestoreDescriptor`** as AAD, but the `RestoreEnvelope` control message
+deliberately carries only `{ transferId, blobId, K, count, sha256 }`. The descriptor is **not** sent on
+the wire (it's authenticated, not embedded — confirmed by the blindness tests). So slice #2's state
+machine MUST reconstruct the exact descriptor on B's side from context. Field provenance:
+
+| Descriptor field | Where B sources it when opening |
+|---|---|
+| `transferId` | the `RestoreEnvelope` message |
+| `conversationId` | the enclosing MLS conversation the control message arrived on |
+| `fromDeviceId` | **`RestoreBlobModel.fromDeviceId`** on the `getRestoreBlob` response (A's uploader device) |
+| `targetDeviceId` | B's own current device row id |
+| `chunkIndex` | `0` for the single-blob foundation (the chunk index when INLINE chunking lands) |
+| `chunkCount` | `1` for the single-blob foundation (total blob chunks) |
+
+> **Naming trap — `count` ≠ `chunkCount`.** The descriptor's **`chunkCount`** is the number of sealed
+> **blob chunks** (the AEAD slot dimension). The control messages' **`count`** (in `Envelope`/`Complete`/
+> `Ack`) is the number of **history rows** in the transfer — the application/integrity quantity paired
+> with the running `sha256`. They are **distinct** and slice #2 must **not** conflate them: a blob's AAD
+> uses `chunkIndex`/`chunkCount`; the transfer's completeness/integrity uses `count`/`sha256`. Getting
+> this wrong yields blobs that fail closed on open (safe, but a silent functional break).
 
 ## Out of scope (later slices)
 

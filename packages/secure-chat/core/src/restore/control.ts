@@ -91,7 +91,9 @@ export function encodeIucControl(msg: IucControlMessage): Uint8Array {
  * @throws {Error} On a non-array payload, unknown type, wrong arity, or wrong field type.
  */
 export function decodeIucControl(payload: Uint8Array): IucControlMessage {
-  const a = asArray(decode(payload, { maxItems: 16 }));
+  // Tight bounds for untrusted peer input: every control message is a flat array of scalars (max arity
+  // 6), so cap items, total size, and nesting hard — defense-in-depth beyond the codec's safe defaults.
+  const a = asArray(decode(payload, { maxItems: 16, maxBytes: 4096, maxDepth: 1 }));
   const type = int(a[0], "type");
   switch (type) {
     case IucControlType.Request:

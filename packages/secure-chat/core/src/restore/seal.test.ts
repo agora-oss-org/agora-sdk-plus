@@ -52,6 +52,15 @@ describe("restore seal: round-trip + blindness", () => {
     const blob = sealRestoreBlob(K, pt, restoreAad(descriptor()));
     expect(contains(blob, pt)).toBe(false);
   });
+  it("the sealed blob never contains the descriptor strings (AAD is bound, not embedded)", () => {
+    // The descriptor is authenticated as AAD but is NOT written into the blob output (nonce||ct||tag).
+    // A recipient reconstructs it from the protocol/MLS context — so routing ids must not leak on the wire.
+    const K = generateRestoreKey();
+    const d = descriptor({ conversationId: "conv-secret-xyz", fromDeviceId: "dev-secret-A" });
+    const blob = sealRestoreBlob(K, utf8("body"), restoreAad(d));
+    expect(contains(blob, utf8("conv-secret-xyz"))).toBe(false);
+    expect(contains(blob, utf8("dev-secret-A"))).toBe(false);
+  });
   it("prepends a fresh 24-byte nonce → same plaintext seals to different blobs", () => {
     const K = generateRestoreKey();
     const aad = restoreAad(descriptor());
