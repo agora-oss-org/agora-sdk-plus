@@ -11,6 +11,7 @@ All notable changes to Agora SDK Plus are documented here, following
 - Restore-blob REST methods (`uploadRestoreBlob`/`getRestoreBlob`/`deleteRestoreBlob`) + `SecureRestoreError`; `@agora-server/contract` bumped to `^0.13.0` with type-only re-exports of `RestoreBlobModel`/`UploadRestoreBlobResponse`/`UploadRestoreBlobBody`.
 - `kind:1` IUC control-message codec (`secure-chat-core/restore/control`) — canonical-CBOR encode/decode for request/offer/declined/envelope/complete/ack; strict, fail-closed.
 - IUC ENVELOPE blob AEAD (`secure-chat-core/restore/seal`) — XChaCha20-Poly1305 seal/open with a full-entropy CSPRNG key and the transfer descriptor bound as canonical-CBOR AAD; fail-closed.
+- Public surface for IUC ENVELOPE foundation exported from `@agora-sdk/secure-chat-core` — all restore/seal, restore/control, and restore-blob transport/contract symbols now accessible from the package root.
 
 ## [0.8.0] — 2026-06-20
 

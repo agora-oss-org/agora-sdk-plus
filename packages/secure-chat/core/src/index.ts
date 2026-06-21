@@ -97,6 +97,18 @@ export type { RenderedContent } from "./hooks/message-fold.js";
 export { encode as encodeCbor, decode as decodeCbor, CborTag } from "./content/cbor.js";
 export type { CborValue, CborMap, CborLimits } from "./content/cbor.js";
 
+// ── IUC restore (ENVELOPE foundation) ─────────────────────────────────────────
+export {
+  generateRestoreKey, restoreAad, sealRestoreBlob, openRestoreBlob, SecureRestoreSealError,
+} from "./restore/seal.js";
+export type { RestoreDescriptor } from "./restore/seal.js";
+export { encodeIucControl, decodeIucControl, IucControlType } from "./restore/control.js";
+export type {
+  IucControlMessage, RestoreRequest, RestoreOffer, RestoreDeclined, RestoreEnvelope, RestoreComplete, RestoreAck,
+} from "./restore/control.js";
+export { SecureRestoreError } from "./transport/rest.js";
+export type { RestoreBlobModel, UploadRestoreBlobResponse, UploadRestoreBlobBody } from "./contract/index.js";
+
 // ── dev logging (off by default; see util/debug) ──────────────────────────────
 export { setSecureChatDebug, isSecureChatDebugEnabled } from "./util/debug.js";
 export type { SecureChatDebugLevel, SecureChatDebugLogger } from "./util/debug.js";
