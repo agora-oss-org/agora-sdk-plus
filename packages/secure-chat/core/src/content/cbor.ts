@@ -28,7 +28,9 @@ export type CborMap = Map<CborValue, CborValue>;
 /** A CBOR tagged value (major type 6): a `tag` number wrapping one nested value. */
 export class CborTag {
   constructor(
+    /** The CBOR tag number (major type 6 argument). */
     public readonly tag: number | bigint,
+    /** The single nested value wrapped by this tag. */
     public readonly value: CborValue
   ) {}
 }

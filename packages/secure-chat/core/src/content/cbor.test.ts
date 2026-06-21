@@ -80,6 +80,9 @@ describe("cbor: strict decode rejects out-of-subset / non-canonical", () => {
   it("enforces maxDepth", () => {
     expect(() => decode(encode([[[[1]]]]), { maxDepth: 2 })).toThrow(/depth/i);
   });
+  it("enforces maxItems", () => {
+    expect(() => decode(encode([1, 2, 3]), { maxItems: 2 })).toThrow(/items|bounds/i);
+  });
 });
 
 describe("cbor: round-trips nested structures", () => {
