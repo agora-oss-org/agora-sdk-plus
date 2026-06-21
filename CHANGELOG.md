@@ -6,6 +6,8 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-06-20
+
 ### Changed
 
 - Durable message store now persists decrypted content-frame bytes (`[kind][payload]`) instead of UTF-8 plaintext — `SecureChatRepository.saveMessageContent`/`loadMessageContent` replace `saveMessagePlaintext`/`loadMessagePlaintext`.
