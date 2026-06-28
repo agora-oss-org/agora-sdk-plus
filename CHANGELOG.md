@@ -6,6 +6,8 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-06-28
+
 ### Added
 
 - **`@agora-sdk/auth-react-js`** (new web package): black-box OAuth callback handling and auth ergonomics for Agora SDK (Replyke fork) web apps — `useOAuthCallback` / `OAuthCallbackHandler` (persistence-gated MPA redirect), `useAuthStatus` (auth-ready signal), `useSignOutEverywhere` (reliable full logout), `useAuthSelfHeal` (stale-account prune). First plus feature that peer-depends on `@agora-sdk/react-js` — a deliberate, scoped exception to the "no `@agora-sdk/core` dependency" rule (auth is *about* the SDK session). Answers `agora-sdk/docs/AUTH_IMPLEMENTATION.md` P1/P3/P4/P5/P6/P7.
