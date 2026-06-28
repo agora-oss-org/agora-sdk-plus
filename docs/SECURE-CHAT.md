@@ -6,7 +6,7 @@
 
 ---
 
-## The one idea 💡
+## Overview 💡
 
 Secure chat is the client side of Agora's **end-to-end-encrypted messaging** (**MLS /
 [RFC 9420](https://www.rfc-editor.org/rfc/rfc9420)**). The Agora server is a **blind delivery
@@ -30,7 +30,7 @@ swappable `SecureChatCrypto` seam.
 | `@agora-sdk/secure-chat-react-native` | Bare React Native: Keychain + native MLS *(Phase 3 — stub)* |
 | `@agora-sdk/secure-chat-expo` | Expo: SecureStore *(Phase 3 — stub)* |
 
-## Quick start 🚀
+## Getting started 🚀
 
 ```bash
 # web — standalone, no @agora-sdk/core required
@@ -108,7 +108,7 @@ Other knobs: `AGORA_E2E_BASE_URL` / `AGORA_E2E_SOCKET_URL` (both default to the 
 process at `http://localhost:4002`). The suite seeds its own throwaway project and tears it down. Full
 walkthrough: [`TESTING.md`](../TESTING.md).
 
-## Going deeper 📚
+## Further reading 📚
 
 - [`ARCHITECTURE.md`](../ARCHITECTURE.md) — package graph, seams, runtime flows (with diagrams)
 - [`CLAUDE.md`](../CLAUDE.md) — the prose source of truth for the blind-server / client-crypto model

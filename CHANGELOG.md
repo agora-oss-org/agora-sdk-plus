@@ -14,6 +14,10 @@ All notable changes to Agora SDK Plus are documented here, following
 
 - `CLAUDE.md` + `ARCHITECTURE.md` — documented the **social** feature group (`@agora-sdk/social-{core,react-js,react-native,expo}`): the three commons lenses (Weather / Constellation / Neighborhood) + transparency self-gating, REST-only/no-crypto layering, and its own package-graph cluster and layers diagram. Corrected `@agora-server/contract` version drift (secure-chat-core `^0.13.0`, social-core `^0.12.1`), the `build-all` order, and added single-test + release/`verify:dist` commands.
 
+### Fixed
+
+- All package manifests now point `repository.url` / `homepage` / `bugs.url` at `github.com/agora-oss-org/agora-sdk-plus` (the repo moved orgs from `jenova-marie`). npm publish with provenance (`NPM_CONFIG_PROVENANCE`) rejected every package with `422 … Failed to validate repository information` because the manifest org no longer matched the GitHub Actions build repo recorded in the sigstore attestation.
+
 ## [0.9.0] — 2026-06-28
 
 ### Added

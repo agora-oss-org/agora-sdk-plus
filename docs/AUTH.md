@@ -7,7 +7,7 @@
 
 ---
 
-## The one idea 💡
+## Overview 💡
 
 The Agora SDK's email/password auth is already black-box: call the hook, `await`, done. **OAuth
 isn't** — in a multi-page app (Astro, Next.js, Remix, SvelteKit) it leaks internal invariants the
@@ -100,7 +100,7 @@ function App() { useAuthSelfHeal(); return <Thread />; } // prunes a dead active
   `@agora-sdk/react-js` **peerDependency**), deliberately: auth is *about* the SDK's session. Secure
   chat and social stay standalone. See [`CLAUDE.md`](../CLAUDE.md) for the scoped-exception note.
 
-## Going deeper 📚
+## Further reading 📚
 
 - Design spec: [`docs/superpowers/specs/2026-06-27-auth-react-js-oauth-callback-design.md`](superpowers/specs/2026-06-27-auth-react-js-oauth-callback-design.md)
 - The original field report: `agora-sdk/docs/AUTH_IMPLEMENTATION.md`

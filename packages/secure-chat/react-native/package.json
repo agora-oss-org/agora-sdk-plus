@@ -14,12 +14,12 @@
     "typescript"
   ],
   "bugs": {
-    "url": "https://github.com/jenova-marie/agora-sdk-plus/issues"
+    "url": "https://github.com/agora-oss-org/agora-sdk-plus/issues"
   },
-  "homepage": "https://github.com/jenova-marie/agora-sdk-plus",
+  "homepage": "https://github.com/agora-oss-org/agora-sdk-plus",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jenova-marie/agora-sdk-plus.git",
+    "url": "https://github.com/agora-oss-org/agora-sdk-plus.git",
     "directory": "packages/secure-chat/react-native"
   },
   "main": "dist/cjs/index.js",
