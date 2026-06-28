@@ -1,127 +1,70 @@
-# Agora SDK Plus
+# Agora SDK Plus 🌸
 
-Additive, **Agora-only** SDK features that build on top of [`@agora-sdk/*`](https://github.com/jenova-marie/agora-sdk) —
-capabilities with no upstream [Replyke](https://github.com/replyke/monorepo) counterpart, kept out of
-the agora-sdk fork so that fork stays a tiny, documented divergence from upstream.
+*A little home for the lovely extra things your Agora app deserves.* 💝
 
-First feature: **secure chat** — the client side of Agora's end-to-end-encrypted messaging
-(**MLS / [RFC 9420](https://www.rfc-editor.org/rfc/rfc9420)**). The Agora server is a *blind*
-delivery service that never sees plaintext; all crypto lives in these client packages behind a
-swappable `SecureChatCrypto` seam.
+Agora SDK Plus is where **additive, Agora-only** features live — the capabilities that have **no
+upstream [Replyke](https://github.com/replyke/monorepo) counterpart**, kept tucked safely out of the
+[`@agora-sdk/*`](https://github.com/jenova-marie/agora-sdk) fork so that fork can stay a tiny,
+documented little divergence from upstream. 🪶
 
-> **Status: Phase 2 in progress.** Structure, transport, provider/hooks, persistence, and handshake
-> processing are built, and the real MLS crypto (**ts-mls**) is wired on web (`@agora-sdk/secure-chat-crypto/ts-mls`)
-> and proven end-to-end against a running agora-server. Remaining Phase 2: KeyPackage replenishment
-> tuning, passphrase backup/restore, generation-counter enforcement. Not yet published to npm.
+Everything here is original work, designed to **drop into an Agora/Replyke app** and feel like it
+always belonged. Pick the rooms you want; leave the rest. 🏡
 
-## Packages
+---
 
-| Package | Role |
-|---|---|
-| `@agora-sdk/secure-chat-crypto` | The `SecureChatCrypto` seam: interface (main entry) + `MockSecureChatCrypto` (`./testing`) + the real **ts-mls** core (`./ts-mls`, ESM-only). Bare entry + `./testing` are dependency-free |
-| `@agora-sdk/secure-chat-core` | Platform-agnostic: REST + `/secure` socket transport, `SecureChatProvider` + hooks, crypto via dependency injection |
-| `@agora-sdk/secure-chat-react-js` | Web: real `SecureChatCrypto` (ts-mls) + IndexedDB persistence *(ESM-only)* |
-| `@agora-sdk/secure-chat-react-native` | Bare React Native: Keychain + native MLS *(Phase 3 — stub)* |
-| `@agora-sdk/secure-chat-expo` | Expo: SecureStore *(Phase 3 — stub)* |
+## ✨ The features (pick a room)
 
-## Install (once published)
+Each feature is its own package group with a cozy guide of its own — start there:
 
-```bash
-# web — standalone, no @agora-sdk/core required
-pnpm add @agora-sdk/secure-chat-react-js
+| | Feature | What it gives you | Guide |
+|---|---|---|---|
+| 🔐 | **Secure Chat** | Client side of Agora's end-to-end-encrypted messaging (MLS / RFC 9420). The server stays *blind* — all crypto lives here behind a swappable seam. | [`docs/SECURE-CHAT.md`](docs/SECURE-CHAT.md) |
+| 🌷 | **Social Graph** | The community-as-a-commons lenses — Weather, Constellation, Neighborhood, Transparency — rendered with care, never mined. | [`docs/SOCIAL.md`](docs/SOCIAL.md) |
+| 🔑 | **Auth ergonomics** | Black-box OAuth for web/MPA apps: a callback that waits for real persistence, a clean auth-ready signal, a logout that *actually* logs out, and stale-session self-heal. | [`docs/AUTH.md`](docs/AUTH.md) |
+
+> 🌿 **A note on independence.** Secure Chat and Social are fully **standalone** — they take everything
+> they need (`baseUrl`, access token) as plain inputs and have *no* code dependency on the SDK. **Auth
+> ergonomics** is the one gentle exception: it peer-depends on `@agora-sdk/react-js` because its whole
+> job is coordinating with the SDK's own auth session. (More on that in [`CLAUDE.md`](CLAUDE.md).)
+
+## 📦 The packages
+
+Each feature group mirrors the SDK's **core + platform** shape so it all feels familiar:
+
+```
+secure-chat   @agora-sdk/secure-chat-{crypto,core,react-js,react-native,expo}
+social        @agora-sdk/social-{core,react-js,react-native,expo}
+auth          @agora-sdk/auth-react-js   (web only)
 ```
 
-```tsx
-import {
-  SecureChatProvider,
-  createWebSecureChatCrypto,
-  createIndexedDBStore,
-} from "@agora-sdk/secure-chat-react-js";
+Full per-package roles live in each feature's guide above, and the package graph + seams are drawn out
+in [`ARCHITECTURE.md`](ARCHITECTURE.md). 🗺️
 
-// Memoize crypto + store so they're stable across renders (a fresh instance each render rebuilds the
-// provider and churns the device). `baseUrl` is required — secure chat is a standalone transport.
-const crypto = useMemo(() => createWebSecureChatCrypto(), []);
-const store = useMemo(() => createIndexedDBStore(), []);
-
-<SecureChatProvider
-  projectId={projectId}
-  baseUrl={baseUrl}          // e.g. https://api.example.com/v7
-  accessToken={accessToken}
-  crypto={crypto}
-  store={store}
->
-  {/* useSecureConversations(), useSecureMessages(), … */}
-</SecureChatProvider>
-```
-
-### Encryption at rest (optional)
-
-The base `createIndexedDBStore()` writes **plaintext** to IndexedDB (the blind server still never sees
-it, but anyone with disk or same-origin access can). Wrap it with `createEncryptedStore` to seal every
-persisted **value** — MLS group/ratchet secrets, the device signing key, decrypted message history,
-cursors — at rest under a password-derived key (argon2id → KEK → non-extractable AES-256-GCM DEK).
-**Call `unlock(password)` before mounting the provider**, and `lock()` on logout/idle:
-
-```tsx
-import { createEncryptedStore, createIndexedDBStore } from "@agora-sdk/secure-chat-react-js";
-
-const store = useMemo(() => createEncryptedStore(createIndexedDBStore()), []);
-await store.unlock(userPassword);   // first use mints the DEK; later opens unwrap it. MUST precede mount.
-
-<SecureChatProvider store={store} /* …same props as above… */ >…</SecureChatProvider>
-
-store.lock();                       // drop the in-memory DEK (disk-lock; see the scope note below)
-```
-
-Fails closed everywhere: while locked, every store op throws `StoreLockedError`; a wrong password or a
-tampered value throws a generic error and never yields raw bytes. **Scope (v1):** store *values* are
-sealed; *keys* still pass through in the clear (they leak conversation ids + message counts the server
-already sees), and `lock()` is a disk-lock — it drops the store's key but does not purge plaintext
-already cached in the provider/crypto memory. Full details + threat model:
-[`docs/superpowers/specs/2026-06-18-encryption-at-rest-design.md`](docs/superpowers/specs/2026-06-18-encryption-at-rest-design.md).
-
-## Develop
+## 🛠️ Develop
 
 ```bash
 pnpm install
-pnpm run build-all     # core → react-js → react-native → expo (dual ESM + CJS; react-js is ESM-only)
+pnpm run build-all     # all feature packages, in dependency order (dual ESM + CJS; some web pkgs are ESM-only)
 pnpm run typecheck
-pnpm test              # unit suite (vitest) — fully mocked, no server needed
+pnpm test              # unit suite (vitest) — fully mocked, no server needed 💚
 ```
 
-### Foundation e2e (optional, needs a running agora-server)
+Each feature's guide documents its own opt-in **e2e** flow (these need a running
+[agora-server](https://github.com/jenova-marie/agora-server) and are skipped by default, so `pnpm test`
+and CI stay server-free).
 
-`pnpm test:e2e` drives the **real** transport clients against a locally running
-[agora-server](https://github.com/jenova-marie/agora-server), proving the wire contract end to end
-(register → DM → send → receive → realtime → reload, server-blind throughout). It is **opt-in**: skipped
-unless `AGORA_E2E_DATABASE_URL` is set, so the default `pnpm test` and CI never need a server.
+## 🧩 How this all fits together
 
-```bash
-# 1. Start the server (in the agora-server repo), pointed at a Postgres you can write to:
-pnpm db:migrate && pnpm dev:api        # listens on :4000
+- **[agora-server](https://github.com/jenova-marie/agora-server)** — the API: the blind MLS Delivery
+  Service + the social graph endpoints. Owns the wire contract (`@agora-server/contract`).
+- **[agora-sdk](https://github.com/jenova-marie/agora-sdk)** — the Replyke fork; a sibling SDK your app
+  runs alongside these features.
+- **agora-sdk-plus** (this repo, hi! 👋) — the additive client layer: crypto, transport, hooks, and
+  React components.
 
-# 2. Run the e2e (env values must match the server's): 
-AGORA_E2E_DATABASE_URL="postgres://…"  \
-AGORA_E2E_ACCESS_TOKEN_SECRET="<server ACCESS_TOKEN_SECRET>"  \
-pnpm test:e2e
-```
+For the deeper map: [`CLAUDE.md`](CLAUDE.md) (architecture prose), [`ARCHITECTURE.md`](ARCHITECTURE.md)
+(diagrams), and [`STATUS.md`](STATUS.md) (current state). 📖
 
-Other knobs: `AGORA_E2E_BASE_URL` (default `http://localhost:4000/v7`), `AGORA_E2E_SOCKET_URL`
-(default `http://localhost:4000`). The suite seeds its own throwaway project and tears it down.
+## 💛 License
 
-## How this fits together
-
-- **[agora-server](https://github.com/jenova-marie/agora-server)** — the blind MLS Delivery Service.
-  Canonical spec: its `docs/SECURE_CHAT.md`.
-- **[agora-sdk](https://github.com/jenova-marie/agora-sdk)** — the Replyke fork; a sibling SDK an app
-  can run alongside these features. **No longer a code dependency** of this repo — the app passes the
-  shared `baseUrl` in.
-- **agora-sdk-plus** (this repo) — the client crypto + transport + React layer.
-
-See [CLAUDE.md](CLAUDE.md) for architecture, [ARCHITECTURE.md](ARCHITECTURE.md) for diagrams
-(package graph, seams, runtime flows), [STATUS.md](STATUS.md) for current state, and
-[`packages/secure-chat/ROADMAP.md`](packages/secure-chat/ROADMAP.md) for the Phase 2 task checklist.
-
-## License
-
-[Apache-2.0](LICENSE). Original Agora work; not affiliated with Replyke.
+[Apache-2.0](LICENSE). Original Agora work, made with care — not affiliated with Replyke.
