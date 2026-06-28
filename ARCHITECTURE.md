@@ -23,6 +23,7 @@ flowchart TD
   subgraph "External (not in this repo)"
     contract["@agora-server/contract<br/>wire types — owned by agora-server"]
     server["agora-server<br/>blind MLS Delivery Service"]
+    sdk["@agora-sdk/react-js<br/>the Replyke fork (peer)"]
   end
 
   subgraph "agora-sdk-plus"
@@ -31,6 +32,7 @@ flowchart TD
     webP["@agora-sdk/secure-chat-react-js<br/>web crypto + IndexedDB store"]
     rnP["@agora-sdk/secure-chat-react-native<br/>Phase 3 stub"]
     expoP["@agora-sdk/secure-chat-expo<br/>Phase 3 stub"]
+    authP["@agora-sdk/auth-react-js<br/>web: OAuth callback + auth ergonomics"]
   end
 
   coreP -->|interface| crypto
@@ -38,12 +40,15 @@ flowchart TD
   webP --> coreP
   rnP --> coreP
   expoP --> coreP
+  authP -.->|peer-dep: observes auth state| sdk
   server -.->|dev-dep: mock for tests| crypto
   coreP <-->|REST + /secure socket| server
 ```
 
 The two arrows worth memorizing: **SDK → contract** (never the reverse), and **server → crypto** is
-*test-only* (agora-server dev-depends on the mock; it ships none of this crypto).
+*test-only* (agora-server dev-depends on the mock; it ships none of this crypto). The lone outbound
+**`auth-react-js` ⇢ `@agora-sdk/react-js`** peer-dep is the single deliberate exception to "no
+`@agora-sdk/core` dependency" — auth is about the SDK session; secure-chat / social stay standalone.
 
 ## Layers & seams (inside the SDK)
 

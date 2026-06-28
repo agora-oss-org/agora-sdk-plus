@@ -62,6 +62,21 @@ packages/secure-chat/expo         @agora-sdk/secure-chat-expo         Expo: Secu
 Future features follow the same layout: `packages/<feature>/{core,react-js,react-native,expo}` →
 `@agora-sdk/<feature>-{core,react-js,...}`. The pnpm workspace globs `packages/**/*`.
 
+```
+packages/auth/react-js            @agora-sdk/auth-react-js            web: black-box OAuth callback + auth ergonomics (peer-deps @agora-sdk/react-js)
+```
+
+> **Scoped exception to "no `@agora-sdk/core` dependency".** `auth-react-js` is the single feature
+> that *does* depend on the SDK (a `@agora-sdk/react-js` **peerDependency**), and deliberately so:
+> unlike secure-chat / social — which are standalone and take `baseUrl` + token as inputs — auth is
+> intrinsically *about the SDK's own session*. It runs inside `<ReplykeProvider>` and **observes** the
+> SDK's auth state via its public hooks (`useAuth`/`useUser`/`useOAuthSignIn`/`useSignOutAll`), touching
+> `localStorage` only in one quarantined module (`accountStorage.ts`, which owns the
+> `replyke-accounts:<projectId>` key + map shape). Web-only: the OAuth callback race is specific to
+> cross-document (MPA) navigation. It answers `agora-sdk/docs/AUTH_IMPLEMENTATION.md` (P1/P3/P4/P5/P6/P7)
+> without widening the fork's divergence from upstream Replyke. secure-chat / social stay standalone —
+> do **not** generalize this dependency to them.
+
 ### The model: blind server, all crypto client-side
 
 Per the server spec, the Agora server is a **blind MLS Delivery Service** — it stores and relays
