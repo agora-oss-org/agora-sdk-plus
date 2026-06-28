@@ -37,7 +37,7 @@ app, Replyke or not.)
 |---|---|
 | [agora-server](https://github.com/jenova-marie/agora-server) | The API. Owns the secure-chat **blind Delivery Service** and the wire contract (`@agora-server/contract`). The `SecureChatCrypto` seam moved out of here into this repo (it was test-only client code). See its `docs/SECURE_CHAT.md` — the canonical spec. |
 | [agora-sdk](https://github.com/jenova-marie/agora-sdk) | The Replyke fork (`@agora-sdk/{core,react-js,react-native,expo}`). A sibling SDK an app runs alongside these features — **no longer a code dependency** of this repo (the app passes the shared `baseUrl` in). |
-| **agora-sdk-plus** (this repo) | Additive Agora-only SDK features. First: secure chat. |
+| **agora-sdk-plus** (this repo) | Additive Agora-only SDK features. Shipping: secure chat, social graph, auth ergonomics. |
 
 ## Architecture
 
@@ -58,6 +58,20 @@ packages/secure-chat/expo         @agora-sdk/secure-chat-expo         Expo: Secu
 
 `secure-chat-core` depends on `secure-chat-crypto` for the interface; the platform packages provide
 (or, today, stub) a concrete `SecureChatCrypto` and inject it into `<SecureChatProvider crypto={…}>`.
+
+The second feature group, **social** — the Agora social graph as a *commons* (the graph is pointed
+back at the community, never mined to rank/target/sell). Three member-facing **lenses** + a
+transparency view, all standalone (`baseUrl` + token + `projectId` in, **no crypto**):
+
+```
+packages/social/core              @agora-sdk/social-core              transport + SocialProvider + feature-gated hooks (useSocialWeather/Constellation/Neighborhood/Transparency). Pure data.
+packages/social/react-js          @agora-sdk/social-react-js          web components: CommunityWeather, Constellation (d3-force), Neighborhood, SocialTransparency. Re-exports social-core.
+packages/social/react-native      @agora-sdk/social-react-native      bare RN components (d3-force + react-native-svg). Re-exports social-core.
+packages/social/expo              @agora-sdk/social-expo              thin re-export of social-react-native (zero platform difference).
+```
+
+`SocialProvider` fetches the transparency config on mount so every hook/component self-gates. See
+[`docs/SOCIAL-GRAPH.md`](docs/SOCIAL-GRAPH.md) for the lens-by-lens integration guide.
 
 Future features follow the same layout: `packages/<feature>/{core,react-js,react-native,expo}` →
 `@agora-sdk/<feature>-{core,react-js,...}`. The pnpm workspace globs `packages/**/*`.
@@ -107,11 +121,12 @@ The dependency arrow is **SDK → contract**, and the **crypto seam is client co
   `./ts-mls` pulls in ts-mls. agora-server **consumes** it as a test devDependency (it only used
   the mock to simulate a client), so it must not live in the AGPL server repo.
 - **Wire types** — owned by agora-server's `@agora-server/contract` (Apache-2.0). This SDK **depends on**
-  it (a `dependency` of `@agora-sdk/secure-chat-core`, `^0.9.3`). `packages/secure-chat/core/src/contract/`
+  it (a `dependency` of `@agora-sdk/secure-chat-core`, `^0.13.0`; `social-core` pins `^0.12.1`).
+  `packages/secure-chat/core/src/contract/`
   is now a thin **type-only re-export** of the contract's secure-chat surface (the former byte-faithful
   stand-in copy is gone — one source of truth, zero drift). The internal import path is kept so call
   sites don't churn; the re-export is type-only, so core's dual ESM/CJS build never `require()`s the
-  (ESM-only) contract at runtime.
+  (ESM-only) contract at runtime. `social-core` follows the same pattern for `contract`'s `social.ts` surface.
 
 **Do not** create an `@agora-sdk/secure-chat-contract` re-exported by `@agora-server/contract` — that
 inverts the dependency. The arrow is **SDK → contract**; see `STATUS.md` for the cross-repo plan.
@@ -121,13 +136,19 @@ inverts the dependency. The arrow is **SDK → contract**; see `STATUS.md` for t
 [pnpm](https://pnpm.io) workspace monorepo.
 
 - `pnpm install` — install
-- `pnpm run build-all` — build all packages in dependency order (core → react-js → react-native →
-  expo); each compiles dual ESM (`dist/esm`, `tsconfig.esm.json`) + CJS (`dist/cjs`,
-  `tsconfig.cjs.json`) — **except `react-js`, which is ESM-only** (it depends on the ESM-only ts-mls
-  core, so a CJS build would never load at runtime; web/React consumers bundle anyway)
+- `pnpm run build-all` — build every package in dependency order: `secure-chat-crypto` first, then the
+  secure-chat group (core → react-js → react-native → expo), the social group (core → react-js →
+  react-native → expo), and `auth-react-js` last. Each compiles dual ESM (`dist/esm`,
+  `tsconfig.esm.json`) + CJS (`dist/cjs`, `tsconfig.cjs.json`) — **except `secure-chat-react-js`, which
+  is ESM-only** (it depends on the ESM-only ts-mls core, so a CJS build would never load at runtime;
+  web/React consumers bundle anyway)
 - `pnpm --filter @agora-sdk/secure-chat-core run build` — build one package while iterating
+- `pnpm run verify:dist` — sanity-check built `dist/` outputs (`scripts/verify-dist.mjs`)
+- `pnpm run version:patch` / `version:minor`, `publish-prod` / `publish-beta` — release across all
+  ten publishable packages (run `scripts/write-version.mjs` after a version bump)
 - `pnpm run typecheck` — `tsc --noEmit` at the root
-- `pnpm test` — unit suite (vitest); fully mocked, server-free
+- `pnpm test` — unit suite (vitest); fully mocked, server-free. Single file/pattern:
+  `pnpm test <path-or-substring>` (e.g. `pnpm test useAuthSelfHeal`); single case: add `-t "<name>"`
 - `pnpm test:e2e` — **opt-in** foundation e2e: the real transport clients against a locally running
   agora-server (register → DM → send → receive → realtime → reload, server-blind). Skipped unless
   `AGORA_E2E_DATABASE_URL` + `AGORA_E2E_ACCESS_TOKEN_SECRET` are set (match the server's `.env`);

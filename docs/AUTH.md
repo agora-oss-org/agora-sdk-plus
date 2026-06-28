@@ -20,16 +20,16 @@ touch `localStorage` keys, count render cycles, or read `useAccountSync`.
 > Redux store are torn down between "tokens received" and "thread mounts"). React Native / Expo OAuth
 > uses an in-app browser and doesn't tear the tree down, so there's nothing to fix there.
 
-## Why it was hard 🫠
+## The underlying problem 🧩
 
 `handleOAuthCallback()` is **fire-and-forget with deferred persistence**: it stages tokens in Redux,
 kicks off an *async* user fetch, and returns `true` **synchronously** — but the session isn't written
 to `localStorage` until several render cycles later, gated on a network round-trip. A callback page
-that navigates on that synchronous return (the obvious thing!) destroys the React tree *before*
-persistence runs, and the freshly minted session is lost. The SPA demo never navigates, so it never
-sees this; every MPA does.
+that navigates on that synchronous return — the obvious approach — destroys the React tree *before*
+persistence runs, and the freshly minted session is lost. A single-page app that never navigates does
+not hit this; a multi-page app always does.
 
-## The hooks + component 🧩
+## API: hooks + component 🧰
 
 ```bash
 pnpm add @agora-sdk/auth-react-js
@@ -89,7 +89,7 @@ import { useAuthSelfHeal } from "@agora-sdk/auth-react-js";
 function App() { useAuthSelfHeal(); return <Thread />; } // prunes a dead active account, once
 ```
 
-## How it stays honest 🧼
+## Design guarantees 🧼
 
 - **Observes, never races.** Success is gated on the SDK's *own* settled state (`accessToken` +
   `user`) **and** the persisted `localStorage` row — the exact thing the next document reads on boot.

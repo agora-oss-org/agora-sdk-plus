@@ -27,11 +27,19 @@ flowchart TD
   end
 
   subgraph "agora-sdk-plus"
-    crypto["@agora-sdk/secure-chat-crypto<br/>SecureChatCrypto interface + MockSecureChatCrypto<br/>dependency-free"]
-    coreP["@agora-sdk/secure-chat-core<br/>transport + provider/hooks + persistence seam"]
-    webP["@agora-sdk/secure-chat-react-js<br/>web crypto + IndexedDB store"]
-    rnP["@agora-sdk/secure-chat-react-native<br/>Phase 3 stub"]
-    expoP["@agora-sdk/secure-chat-expo<br/>Phase 3 stub"]
+    subgraph "secure-chat"
+      crypto["@agora-sdk/secure-chat-crypto<br/>SecureChatCrypto interface + MockSecureChatCrypto<br/>dependency-free"]
+      coreP["@agora-sdk/secure-chat-core<br/>transport + provider/hooks + persistence seam"]
+      webP["@agora-sdk/secure-chat-react-js<br/>web crypto + IndexedDB store"]
+      rnP["@agora-sdk/secure-chat-react-native<br/>Phase 3 stub"]
+      expoP["@agora-sdk/secure-chat-expo<br/>Phase 3 stub"]
+    end
+    subgraph "social (pure data — no crypto)"
+      sCoreP["@agora-sdk/social-core<br/>transport + provider + feature-gated hooks"]
+      sWebP["@agora-sdk/social-react-js<br/>web components (d3-force)"]
+      sRnP["@agora-sdk/social-react-native<br/>RN components (d3-force + svg)"]
+      sExpoP["@agora-sdk/social-expo<br/>re-export of social-react-native"]
+    end
     authP["@agora-sdk/auth-react-js<br/>web: OAuth callback + auth ergonomics"]
   end
 
@@ -40,15 +48,22 @@ flowchart TD
   webP --> coreP
   rnP --> coreP
   expoP --> coreP
+  sCoreP -->|wire types: depends on| contract
+  sWebP --> sCoreP
+  sRnP --> sCoreP
+  sExpoP --> sRnP
   authP -.->|peer-dep: observes auth state| sdk
   server -.->|dev-dep: mock for tests| crypto
   coreP <-->|REST + /secure socket| server
+  sCoreP <-->|REST only| server
 ```
 
-The two arrows worth memorizing: **SDK → contract** (never the reverse), and **server → crypto** is
-*test-only* (agora-server dev-depends on the mock; it ships none of this crypto). The lone outbound
-**`auth-react-js` ⇢ `@agora-sdk/react-js`** peer-dep is the single deliberate exception to "no
-`@agora-sdk/core` dependency" — auth is about the SDK session; secure-chat / social stay standalone.
+The arrows worth memorizing: **SDK → contract** (never the reverse) — true for *both* `secure-chat-core`
+and `social-core`; and **server → crypto** is *test-only* (agora-server dev-depends on the mock; it
+ships none of this crypto). The lone outbound **`auth-react-js` ⇢ `@agora-sdk/react-js`** peer-dep is
+the single deliberate exception to "no `@agora-sdk/core` dependency" — auth is about the SDK session;
+secure-chat / social stay standalone (`baseUrl` + token in). Note the two feature groups never touch
+each other: social is **pure data** — no `secure-chat-crypto`, no `/secure` socket.
 
 ## Layers & seams (inside the SDK)
 
@@ -80,6 +95,38 @@ flowchart LR
   rest -->|HTTPS, base64 bodies| ds
   socket -->|/secure websocket, ciphertext events| ds
 ```
+
+## Social graph layers & seams
+
+The social group has **no DI** — no crypto seam, no store seam, no socket. `SocialProvider` takes
+`baseUrl` + token + `projectId`, fetches the **transparency config** once on mount, and exposes it so
+every hook and component **self-gates** (a disabled lens renders nothing rather than calling its
+endpoint). Three member-facing lenses + the transparency view, each one REST call:
+
+```mermaid
+flowchart LR
+  app["App (React)"]
+
+  subgraph "SocialProvider"
+    cfg["transparency config<br/>(fetched on mount → gates everything)"]
+    wHook["useSocialWeather"]
+    cHook["useSocialConstellation"]
+    nHook["useSocialNeighborhood"]
+    tHook["useSocialTransparency"]
+    srest["social REST client"]
+  end
+
+  ds["agora-server<br/>(aggregates / k-anonymous / self-view)"]
+
+  app --> wHook & cHook & nHook & tHook
+  cfg -.->|gate| wHook & cHook & nHook
+  wHook & cHook & nHook & tHook --> srest
+  srest -->|GET /social/{weather,constellation,neighborhood,transparency}| ds
+```
+
+Privacy tiers are enforced **server-side** (Weather = aggregate scalar, Constellation = k-anonymous
+cluster blobs, Neighborhood = caller's self-view only); the SDK renders what it's handed and never
+re-identifies. Lens-by-lens detail in [`docs/SOCIAL-GRAPH.md`](docs/SOCIAL-GRAPH.md).
 
 ## Runtime flows
 

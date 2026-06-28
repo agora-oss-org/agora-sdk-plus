@@ -6,6 +6,14 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- `docs/TESTING.md` — testing guide covering all three layers (mocked unit + jsdom, opt-in e2e), the two vitest configs and their disjoint globs, source aliases, the WebCrypto-realm shim, e2e prerequisites/env-var gate, plus the `chat-diag` diagnostic and `verify:dist` packaging guard. Linked from the README "Develop" section.
+
+### Changed
+
+- `CLAUDE.md` + `ARCHITECTURE.md` — documented the **social** feature group (`@agora-sdk/social-{core,react-js,react-native,expo}`): the three commons lenses (Weather / Constellation / Neighborhood) + transparency self-gating, REST-only/no-crypto layering, and its own package-graph cluster and layers diagram. Corrected `@agora-server/contract` version drift (secure-chat-core `^0.13.0`, social-core `^0.12.1`), the `build-all` order, and added single-test + release/`verify:dist` commands.
+
 ## [0.9.0] — 2026-06-28
 
 ### Added
