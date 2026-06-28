@@ -6,6 +6,12 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+## [0.9.2] — 2026-06-28
+
+### Fixed
+
+- **`@agora-sdk/auth-react-js` — `useOAuthCallback` no longer hangs to timeout on a successful login when a stale account is present (field report A8).** A leftover stale account in `localStorage` triggers an SDK boot-refresh that fails `401` and resets the in-store `accessToken` the fresh OAuth flow just set; the previous gate, keyed on in-store auth, then never fired even though the fresh account had persisted correctly. The gate now keys on the **persisted row** — success = a *fresh* active account (new id, or an advanced token expiry) lands in `localStorage` — and polls (the SDK's same-tab writes emit no `storage` event), making it immune to the race. `useOAuthCallback` no longer reads `useAuth`/`useUser`. Added `readActiveAccount` + `pruneAllAccounts` to the storage seam and an optional `pruneStaleOnMount` prop (off by default) that clears pre-existing accounts on mount to silence the cosmetic `401` in single-session apps.
+
 ## [0.9.1] — 2026-06-28
 
 ### Added

@@ -49,6 +49,34 @@ export function hasPersistedRefreshToken(projectId: string, userId: string): boo
 }
 
 /**
+ * The active account's id + token expiry, or null when there is no active account with a refresh
+ * token (no map, no `activeAccountId`, or the active entry is missing/tokenless). `tokenExpiresAt` is
+ * read straight from the persisted entry — it advances on every fresh login, so it doubles as a cheap
+ * "is this a newer session than before?" signal without ever touching the raw token value.
+ */
+export function readActiveAccount(
+  projectId: string
+): { id: string; tokenExpiresAt: number } | null {
+  const map = readAccountMap(projectId);
+  const id = map?.activeAccountId;
+  if (!id) return null;
+  const entry = map.accounts[id];
+  if (!entry?.refreshToken) return null;
+  return { id, tokenExpiresAt: entry.tokenExpiresAt ?? 0 };
+}
+
+/**
+ * Remove **every** stored account for a project. Used to clear pre-existing (and possibly stale)
+ * state before a fresh login so no stale boot-refresh competes with the new session. Each removal
+ * dispatches a synthetic `storage` event via {@link pruneAccount}.
+ */
+export function pruneAllAccounts(projectId: string): void {
+  const map = readAccountMap(projectId);
+  if (!map) return;
+  for (const id of Object.keys(map.accounts)) pruneAccount(projectId, id);
+}
+
+/**
  * Remove an account from the persisted map and write it back. Returns the new map, or null if the
  * user wasn't present (no-op). After writing, dispatches a synthetic `storage` event for the same
  * key so the SDK's `useAccountSync` Phase D listener adopts the pruned map IN THIS TAB (native

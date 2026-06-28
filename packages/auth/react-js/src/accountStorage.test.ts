@@ -4,7 +4,9 @@ import {
   accountsStorageKey,
   readAccountMap,
   hasPersistedRefreshToken,
+  readActiveAccount,
   pruneAccount,
+  pruneAllAccounts,
   type AccountMap,
 } from "./accountStorage";
 
@@ -65,5 +67,48 @@ describe("accountStorage", () => {
   it("pruning a missing user is a no-op returning null", () => {
     seed({ activeAccountId: null, accounts: {} });
     expect(pruneAccount(PROJECT, "nobody")).toBeNull();
+  });
+
+  describe("readActiveAccount", () => {
+    it("returns the active account's id + token expiry", () => {
+      seed({
+        activeAccountId: "u1",
+        accounts: {
+          u1: { refreshToken: "rt1", tokenExpiresAt: 123, user: { id: "u1", name: null, email: null, avatar: null } },
+        },
+      });
+      expect(readActiveAccount(PROJECT)).toEqual({ id: "u1", tokenExpiresAt: 123 });
+    });
+
+    it("returns null when there is no active account, no map, or the active entry lacks a token", () => {
+      expect(readActiveAccount(PROJECT)).toBeNull(); // no map
+      seed({ activeAccountId: null, accounts: {} });
+      expect(readActiveAccount(PROJECT)).toBeNull(); // no active id
+      seed({
+        activeAccountId: "ghost",
+        accounts: { other: { refreshToken: "rt", tokenExpiresAt: 0, user: { id: "other", name: null, email: null, avatar: null } } },
+      });
+      expect(readActiveAccount(PROJECT)).toBeNull(); // active id points at a missing entry
+    });
+  });
+
+  describe("pruneAllAccounts", () => {
+    it("removes every stored account for the project", () => {
+      seed({
+        activeAccountId: "a",
+        accounts: {
+          a: { refreshToken: "ra", tokenExpiresAt: 0, user: { id: "a", name: null, email: null, avatar: null } },
+          b: { refreshToken: "rb", tokenExpiresAt: 0, user: { id: "b", name: null, email: null, avatar: null } },
+        },
+      });
+      pruneAllAccounts(PROJECT);
+      const map = readAccountMap(PROJECT);
+      expect(map?.accounts).toEqual({});
+      expect(readActiveAccount(PROJECT)).toBeNull();
+    });
+
+    it("is a no-op when there is nothing stored", () => {
+      expect(() => pruneAllAccounts(PROJECT)).not.toThrow();
+    });
   });
 });

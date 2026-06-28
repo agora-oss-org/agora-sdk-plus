@@ -21,7 +21,9 @@ export { useAuthSelfHeal } from "./useAuthSelfHeal";
 export {
   accountsStorageKey,
   readAccountMap,
+  readActiveAccount,
   hasPersistedRefreshToken,
   pruneAccount,
+  pruneAllAccounts,
 } from "./accountStorage";
 export type { AccountMap, AccountEntry, AccountSummary } from "./accountStorage";

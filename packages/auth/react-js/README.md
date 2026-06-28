@@ -31,6 +31,11 @@ export default function Callback() {
 }
 ```
 
+It gates navigation on a fresh session actually landing in `localStorage` (the state the next document
+boots from), not on volatile in-store auth — so it stays correct even when a leftover stale account's
+boot-refresh fails `401` mid-flow. Single-session apps can pass `pruneStaleOnMount: true` to clear any
+pre-existing account first and silence that cosmetic `401`.
+
 Or the drop-in component:
 
 ```tsx

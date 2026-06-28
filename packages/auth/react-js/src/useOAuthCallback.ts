@@ -2,11 +2,20 @@
 // DEFERRED persistence: it stages tokens in Redux and starts an async user fetch, but the session
 // isn't written to localStorage until useAccountSync's effects run several render cycles later. An MPA
 // callback that navigates on the synchronous return tears down the tree before persistence lands and
-// loses the session. This hook gates navigation on OBSERVED persistence (store state AND the
-// localStorage row), never a timer — so the next document boots into a real session.
+// loses the session.
+//
+// We gate navigation on the PERSISTED localStorage row — the exact state the next document boots from —
+// NOT on volatile in-store Redux auth. That distinction is load-bearing (field report A8): when a
+// STALE account already sits in localStorage, the SDK's boot-refresh of it fails 401 and resets the
+// in-store accessToken that the fresh OAuth just set, so any gate keyed on in-store auth hangs to
+// timeout even though the fresh account persisted correctly. Reading the persisted row sidesteps the
+// race entirely. Because the SDK's same-tab writes don't emit a `storage` event, we poll.
 import { useEffect, useRef, useState } from "react";
-import { useOAuthSignIn, useAuth, useUser, useProject } from "@agora-sdk/react-js";
-import { hasPersistedRefreshToken } from "./accountStorage";
+import { useOAuthSignIn, useProject } from "@agora-sdk/react-js";
+import { readActiveAccount, pruneAllAccounts } from "./accountStorage";
+
+/** How often (ms) we re-read the persisted row while waiting. Imperceptible for a one-shot login gate. */
+const POLL_MS = 50;
 
 /** Lifecycle of an OAuth callback page. */
 export type OAuthCallbackStatus = "pending" | "success" | "error";
@@ -19,6 +28,14 @@ export type UseOAuthCallbackOptions = {
   onTimeout?: () => void;
   /** How long to wait for persistence before giving up. Default 15000ms. */
   timeoutMs?: number;
+  /**
+   * Clear any pre-existing stored accounts on mount, before parsing the callback. Off by default. A
+   * single-session app can enable it to silence the cosmetic `401` from the SDK boot-refreshing a
+   * stale account (field report A8): with nothing stale to refresh, no competing request runs. Leave
+   * it off for multi-account apps, where a pre-existing account may still be valid — the gate already
+   * tolerates the race without it.
+   */
+  pruneStaleOnMount?: boolean;
 };
 
 /** Return value of {@link useOAuthCallback}. */
@@ -30,9 +47,11 @@ export type UseOAuthCallbackReturn = {
 };
 
 /**
- * Drive an MPA OAuth callback page: parse the redirect once, wait until the session is actually
+ * Drive an MPA OAuth callback page: parse the redirect once, wait until a fresh session is actually
  * persisted to localStorage, then full-page-navigate to `redirectTo`. Resolves the persist→navigate
- * race so the destination document boots authenticated.
+ * race so the destination document boots authenticated — and, per field report A8, survives a stale
+ * account's boot-refresh clobbering in-store auth, because it gates on the persisted row rather than
+ * Redux state.
  *
  * @param options - {@link UseOAuthCallbackOptions}
  * @returns the {@link OAuthCallbackStatus} and any provider error.
@@ -44,40 +63,68 @@ export type UseOAuthCallbackReturn = {
  * }
  */
 export function useOAuthCallback(options: UseOAuthCallbackOptions): UseOAuthCallbackReturn {
-  const { redirectTo, onTimeout, timeoutMs = 15000 } = options;
+  const { redirectTo, onTimeout, timeoutMs = 15000, pruneStaleOnMount = false } = options;
   const { handleOAuthCallback, error: providerError } = useOAuthSignIn();
-  const { accessToken } = useAuth();
-  const { user } = useUser();
   const { projectId } = useProject();
 
   const [status, setStatus] = useState<OAuthCallbackStatus>("pending");
   const [error, setError] = useState<string | null>(null);
   const parsedRef = useRef(false);
   const doneRef = useRef(false);
+  // The active persisted account at boot (after any prune). A fresh login is detected as a change
+  // against this snapshot, so a pre-existing/stale account never counts as success.
+  const priorRef = useRef<{ id: string; tokenExpiresAt: number } | null>(null);
 
   // Parse the redirect exactly once. This only stages tokens + starts the async user fetch.
   useEffect(() => {
     if (parsedRef.current) return;
     parsedRef.current = true;
+
+    if (projectId) {
+      if (pruneStaleOnMount) pruneAllAccounts(projectId);
+      priorRef.current = readActiveAccount(projectId);
+    }
+
     const ok = handleOAuthCallback();
     if (!ok) {
       doneRef.current = true;
       setError(providerError);
       setStatus("error");
     }
-  }, [handleOAuthCallback, providerError]);
+  }, [handleOAuthCallback, providerError, projectId, pruneStaleOnMount]);
 
-  // Navigate ONLY once store state (accessToken + user) AND the persisted localStorage row agree.
+  // Gate on the PERSISTED row. Poll, because the SDK's same-tab writes don't emit a `storage` event,
+  // and because the store state we'd otherwise watch is exactly what's unreliable here (A8).
   useEffect(() => {
-    if (doneRef.current) return;
-    if (!accessToken || !user?.id || !projectId) return; // user fetch still in flight
-    if (!hasPersistedRefreshToken(projectId, user.id)) return; // write hasn't landed yet
-    doneRef.current = true;
-    setStatus("success");
-    window.location.replace(redirectTo);
-  }, [accessToken, user, projectId, redirectTo]);
+    if (doneRef.current || !projectId) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
-  // Escape hatch: if persistence never lands, tell the caller instead of hanging forever.
+    const tick = () => {
+      if (doneRef.current) return;
+      const active = readActiveAccount(projectId);
+      const prior = priorRef.current;
+      // Fresh = an active account with a token that differs from the boot snapshot: a new active id,
+      // or the same id with an advanced token expiry (same-user re-login), or no prior session at all.
+      const isFresh =
+        active != null &&
+        (prior == null ||
+          prior.id !== active.id ||
+          prior.tokenExpiresAt !== active.tokenExpiresAt);
+
+      if (isFresh) {
+        doneRef.current = true;
+        setStatus("success");
+        window.location.replace(redirectTo);
+        return;
+      }
+      timer = setTimeout(tick, POLL_MS);
+    };
+
+    tick();
+    return () => clearTimeout(timer);
+  }, [projectId, redirectTo]);
+
+  // Escape hatch: if a fresh session never persists, tell the caller instead of hanging forever.
   useEffect(() => {
     if (doneRef.current) return;
     const id = setTimeout(() => {
