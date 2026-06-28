@@ -52,8 +52,14 @@ export function readE2EEnv(): E2EEnv | null {
   return {
     databaseUrl,
     accessTokenSecret,
-    baseUrl: process.env.AGORA_E2E_BASE_URL ?? "http://localhost:4000/v7",
-    socketUrl: process.env.AGORA_E2E_SOCKET_URL ?? "http://localhost:4000",
+    // Default to the standalone `@agora/secure-chat` process (SECURE_CHAT_PORT, default 4002), NOT the
+    // main API on :4000. Secure-chat was extracted into its own deployable process that serves BOTH the
+    // secure REST (`/v7/:projectId/secure-chat/*`) and the `/secure-socket/` realtime; the main API on
+    // :4000 has neither (only plaintext chat on the default `/socket.io/` path). The harness seeds the
+    // DB directly + mints its own tokens, so it needs no main API at all — point both URLs at :4002.
+    // Override either var to target a full-stack proxy origin instead.
+    baseUrl: process.env.AGORA_E2E_BASE_URL ?? "http://localhost:4002/v7",
+    socketUrl: process.env.AGORA_E2E_SOCKET_URL ?? "http://localhost:4002",
   };
 }
 

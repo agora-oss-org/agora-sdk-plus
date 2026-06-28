@@ -18,6 +18,10 @@ All notable changes to Agora SDK Plus are documented here, following
 
 - Post-review hardening of the IUC ENVELOPE foundation: `decodeIucControl` now bounds untrusted input tighter (`maxBytes`/`maxDepth` for the flat control messages, not just `maxItems`); `restoreAad` drops the `unknown` cast for compile-time-checked CBOR entries; added a negative-blindness test asserting the sealed blob never embeds the descriptor routing strings (AAD is bound, not embedded). Documented the slice-#2 AAD-reconstruction mapping and the `count` (history rows) vs `chunkCount` (blob chunks) distinction in the design spec.
 
+### Fixed
+
+- e2e harness now defaults `AGORA_E2E_BASE_URL`/`AGORA_E2E_SOCKET_URL` to the standalone `@agora/secure-chat` process on `:4002` (was `:4000`, the main API, which serves neither the secure REST nor the `/secure-socket/` realtime). This unblocks the `fans out a live message over the /secure socket` e2e (`connect_error: websocket error` against the 404'd path); the realtime socket was never broken — the harness was probing the wrong port. Full suite green (16/16) against `:4002`.
+
 ## [0.8.0] — 2026-06-20
 
 ### Changed
