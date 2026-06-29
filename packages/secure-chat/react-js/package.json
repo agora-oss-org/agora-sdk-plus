@@ -1,6 +1,6 @@
 {
   "name": "@agora-sdk/secure-chat-react-js",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "private": false,
   "license": "Apache-2.0",
   "author": "Agora SDK Plus, maintained by Jenova Marie",
@@ -30,14 +30,16 @@
   "comment:esm-only": "ESM-only: this web binding depends on the ESM-only @agora-sdk/secure-chat-crypto/ts-mls core, so a CJS build would never load at runtime. Web/React consumers always bundle (Vite/webpack/Metro) anyway.",
   "scripts": {
     "build:esm": "tsc -p tsconfig.esm.json",
-    "build": "rimraf dist && pnpm run build:esm",
-    "prepublish": "pnpm run build"
+    "build": "rimraf dist && pnpm run build:esm && pnpm run copy:docs",
+    "prepublish": "pnpm run build",
+    "copy:docs": "cp ../../../docs/SECURE-CHAT.md ./SECURE-CHAT.md"
   },
   "publishConfig": {
     "access": "public"
   },
   "files": [
-    "dist"
+    "dist",
+    "SECURE-CHAT.md"
   ],
   "dependencies": {
     "@agora-sdk/secure-chat-core": "workspace:*",

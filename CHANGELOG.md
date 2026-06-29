@@ -6,6 +6,12 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+## [0.9.3] — 2026-06-28
+
+### Added
+
+- Each feature guide now **ships inside** its primary web package's npm tarball, so it travels with an `npm install`: `docs/AUTH.md` → `@agora-sdk/auth-react-js`, `docs/SECURE-CHAT.md` → `@agora-sdk/secure-chat-react-js`, `docs/SOCIAL-GRAPH.md` → `@agora-sdk/social-react-js`. The copy is generated from the root `docs/` source of truth by each package's `copy:docs` script (wired into `build`) and git-ignored, so there is no committed duplicate to drift. Added READMEs for `secure-chat-react-js` and `social-react-js` (previously none), and a "Full guide" link from each web package README + the root README.
+
 ## [0.9.2] — 2026-06-28
 
 ### Fixed

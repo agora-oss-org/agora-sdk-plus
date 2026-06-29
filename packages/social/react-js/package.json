@@ -1,6 +1,6 @@
 {
   "name": "@agora-sdk/social-react-js",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "private": false,
   "license": "Apache-2.0",
   "author": "Agora SDK Plus, maintained by Jenova Marie",
@@ -30,14 +30,16 @@
   "comment:esm-only": "ESM-only to match the secure-chat web binding: web/React consumers always bundle (Vite/webpack/Metro), so a CJS build is unnecessary; d3-force (an ESM-only dep) is happiest bundled too.",
   "scripts": {
     "build:esm": "tsc -p tsconfig.esm.json",
-    "build": "rimraf dist && pnpm run build:esm",
-    "prepublish": "pnpm run build"
+    "build": "rimraf dist && pnpm run build:esm && pnpm run copy:docs",
+    "prepublish": "pnpm run build",
+    "copy:docs": "cp ../../../docs/SOCIAL-GRAPH.md ./SOCIAL-GRAPH.md"
   },
   "publishConfig": {
     "access": "public"
   },
   "files": [
-    "dist"
+    "dist",
+    "SOCIAL-GRAPH.md"
   ],
   "dependencies": {
     "@agora-sdk/social-core": "workspace:*",

@@ -39,6 +39,12 @@ auth          @agora-sdk/auth-react-js   (web only)
 Per-package roles are documented in each feature's guide above; the package graph and seams are drawn
 in [`ARCHITECTURE.md`](ARCHITECTURE.md). 🗺️
 
+> 📘 Each guide **ships inside** its primary web package, so it travels with an `npm install`:
+> [`AUTH.md`](docs/AUTH.md) in `@agora-sdk/auth-react-js`, [`SECURE-CHAT.md`](docs/SECURE-CHAT.md) in
+> `@agora-sdk/secure-chat-react-js`, and [`SOCIAL-GRAPH.md`](docs/SOCIAL-GRAPH.md) in
+> `@agora-sdk/social-react-js`. The copies are generated from `docs/` at build time (single source of
+> truth), so they never drift.
+
 ## 🛠️ Develop
 
 ```bash

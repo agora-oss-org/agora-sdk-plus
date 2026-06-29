@@ -10,6 +10,13 @@ build/
 .out/
 **/dist/
 
+# Generated doc copies bundled into package tarballs at build time.
+# Source of truth is /docs — these are `cp`-ed in by each package's `copy:docs` script
+# (wired into `build`) so the guide ships inside the published package; never edit/commit these.
+/packages/auth/react-js/AUTH.md
+/packages/secure-chat/react-js/SECURE-CHAT.md
+/packages/social/react-js/SOCIAL-GRAPH.md
+
 # Logs & debugging
 npm-debug.log*
 pnpm-debug.log*

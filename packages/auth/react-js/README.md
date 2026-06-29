@@ -73,3 +73,9 @@ function App() { useAuthSelfHeal(); return <Thread />; } // prunes a dead active
 
 Web only. The callback race is specific to cross-document navigation; React Native / Expo OAuth does
 not tear down the tree.
+
+## Full guide
+
+The complete guide — every hook + component, the design guarantees, and the A8 stale-account race
+analysis — ships with this package as [`AUTH.md`](./AUTH.md) and lives in the repo at
+[`docs/AUTH.md`](https://github.com/agora-oss-org/agora-sdk-plus/blob/main/docs/AUTH.md).
