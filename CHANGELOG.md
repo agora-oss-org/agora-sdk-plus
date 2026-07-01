@@ -6,6 +6,10 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Fixed
+
+- **`@agora-sdk/social-core` — every lens (Weather / Constellation / Neighborhood) rendered empty and never issued a request.** `SocialRestClient.getTransparency()` raw-**cast** the server's `GET /social/transparency` body to `ResolvedSocialConfig`, but the endpoint returns a **nested** DTO (`{ garden, analytics, decay }`), not the flat `*Enabled` shape the hooks gate on. Every flat key (`weatherEnabled`, `constellationEnabled`, `neighborhoodEnabled`, …) resolved to `undefined`, so each `useSocial*` hook self-gated to disabled and fetched nothing — surfacing as `null` data with no error. Added a typed `SocialTransparencyWire` plus a pure, fail-closed `transparencyToConfig()` mapper (`garden.weather → weatherEnabled`, etc.; non-`true` values coerce to `false`); `getTransparency()` now maps instead of casting. The three resolver-only fields transparency does not expose (`neighborhoodIncludeInteractions`, `frictionVisibleToStewards`, `constellationKFloor`) get safe defaults. Note: for a project whose `neighborhoodIncludeInteractions` default is `true`, the server's `transparencyView` must also expose that field for the SDK to honor it as the initial toggle state.
+
 ## [0.9.3] — 2026-06-28
 
 ### Added

@@ -15,8 +15,87 @@ import {
   ResolvedSocialConfig,
   SocialConstellation,
   SocialNeighborhood,
+  SocialPrivacyTier,
   SocialWeather,
 } from "../contract/index.js";
+
+/**
+ * The shape `GET /social/transparency` actually puts on the wire — the server's member-facing
+ * transparency DTO (`apps/api lib/social-config.ts` `transparencyView`). It is **NOT** the flat
+ * {@link ResolvedSocialConfig} the hooks read: the feature flags are grouped under `garden` /
+ * `analytics` / `decay`, and three resolver-only fields (`constellationKFloor`,
+ * `neighborhoodIncludeInteractions`, `frictionVisibleToStewards`) are deliberately not exposed.
+ * {@link transparencyToConfig} maps this into the flat config; never cast one to the other.
+ */
+export interface SocialTransparencyWire {
+  privacyTier: string;
+  analytics: {
+    influenceScores: boolean;
+    siloDetection: boolean;
+    engagementScores: boolean;
+    frictionAnalytics: boolean;
+    readReceiptsAllowed: boolean;
+  };
+  garden: {
+    graph: boolean;
+    weather: boolean;
+    constellation: boolean;
+    neighborhood: boolean;
+    readAffinity: boolean;
+  };
+  decay: { warmthHalfLifeDays: number; frictionHalfLifeDays: number };
+}
+
+/** Fail-closed boolean coercion: only a literal `true` is true; anything else (incl. truthy garbage,
+ *  `undefined` from a missing field) becomes `false`, so a malformed transparency body hides surfaces
+ *  rather than silently enabling them. */
+const asBool = (v: unknown): boolean => v === true;
+
+/** A finite number, else the supplied default — guards the decay half-lives against a missing/garbage
+ *  field on the wire. */
+const asNum = (v: unknown, fallback: number): number =>
+  typeof v === "number" && Number.isFinite(v) ? v : fallback;
+
+/**
+ * Map the nested {@link SocialTransparencyWire} the server returns into the flat
+ * {@link ResolvedSocialConfig} the `useSocial*` hooks gate on (`config.weatherEnabled`, etc.).
+ *
+ * This is the fix for "every lens shows null and never fetches": the hooks read flat `*Enabled` keys
+ * that do not exist on the nested wire shape, so a raw cast left every gate `undefined → disabled`.
+ *
+ * The three fields transparency does not carry are filled with safe, fail-closed defaults:
+ * - `neighborhoodIncludeInteractions: false` — the documented project default; a member can still
+ *   override it per-request via the endpoint's `?includeInteractions=` param, and the response echoes
+ *   the effective value. (If a project sets this default to `true`, the server's `transparencyView`
+ *   must expose it for the SDK to honor it as the initial toggle state.)
+ * - `frictionVisibleToStewards: false` — steward-only, never read by these member-facing hooks.
+ * - `constellationKFloor: 5` — the contract's k-anonymity floor; not read by the hooks, present only
+ *   to satisfy the type.
+ *
+ * @param t - The server's transparency DTO.
+ * @returns The flat resolved config the hooks/components consume.
+ */
+export function transparencyToConfig(t: SocialTransparencyWire): ResolvedSocialConfig {
+  const tier: SocialPrivacyTier = t.privacyTier === "corporate" ? "corporate" : "community";
+  return {
+    privacyTier: tier,
+    graphEnabled: asBool(t.garden?.graph),
+    weatherEnabled: asBool(t.garden?.weather),
+    constellationEnabled: asBool(t.garden?.constellation),
+    constellationKFloor: 5,
+    neighborhoodEnabled: asBool(t.garden?.neighborhood),
+    neighborhoodIncludeInteractions: false,
+    influenceScoresEnabled: asBool(t.analytics?.influenceScores),
+    siloDetectionEnabled: asBool(t.analytics?.siloDetection),
+    engagementScoresEnabled: asBool(t.analytics?.engagementScores),
+    frictionVisibleToStewards: false,
+    frictionAnalyticsEnabled: asBool(t.analytics?.frictionAnalytics),
+    readAffinityEnabled: asBool(t.garden?.readAffinity),
+    readReceiptsAllowed: asBool(t.analytics?.readReceiptsAllowed),
+    warmthHalfLifeDays: asNum(t.decay?.warmthHalfLifeDays, 30),
+    frictionHalfLifeDays: asNum(t.decay?.frictionHalfLifeDays, 14),
+  };
+}
 
 /**
  * Configuration for {@link SocialRestClient}. The base URL and access token are read through resolver
@@ -179,7 +258,10 @@ export class SocialRestClient {
    * @throws {SocialApiError} `503 social/graph-unavailable` when the graph is not configured.
    */
   async getTransparency(): Promise<ResolvedSocialConfig> {
-    return this.get<ResolvedSocialConfig>("/transparency");
+    // The endpoint returns a NESTED DTO (garden/analytics/decay), not the flat ResolvedSocialConfig
+    // the hooks gate on — map it, never cast. A raw cast left every `*Enabled` key `undefined`, so the
+    // hooks self-gated to disabled and never fetched any lens.
+    return transparencyToConfig(await this.get<SocialTransparencyWire>("/transparency"));
   }
 
   /**
