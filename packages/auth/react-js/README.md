@@ -69,6 +69,30 @@ import { useAuthSelfHeal } from "@agora-sdk/auth-react-js";
 function App() { useAuthSelfHeal(); return <Thread />; } // prunes a dead active account once
 ```
 
+## Email verification & password reset pages
+
+The server emails links back to *your* app — `/auth/verify-email` and `/auth/reset-password`. Drop
+these in on those routes so the links stop 404-ing:
+
+```tsx
+import { EmailVerificationHandler, PasswordResetHandler } from "@agora-sdk/auth-react-js";
+
+// route: /auth/verify-email
+<EmailVerificationHandler redirectTo="/?verified=1" />
+
+// route: /auth/reset-password  (ships a minimal new-password form; pass renderForm for your own UI)
+<PasswordResetHandler redirectTo="/signin?reset=1" />
+```
+
+Both **fail closed** if the link's `projectId` doesn't match your app's (no request is sent), and strip
+the one-time token from the URL after use. Each has a matching logic hook (`useEmailVerification`,
+`usePasswordReset`) if you'd rather render your own page. For the "didn't get it?" flow:
+
+```tsx
+import { ResendVerificationButton } from "@agora-sdk/auth-react-js";
+<ResendVerificationButton email={email} onSent={() => toast("Sent!")} />
+```
+
 ## Scope
 
 Web only. The callback race is specific to cross-document navigation; React Native / Expo OAuth does

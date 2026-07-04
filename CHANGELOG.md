@@ -6,6 +6,19 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- **`@agora-sdk/auth-react-js` — email-link handlers.** Drop-ins for the server's emailed
+  `/auth/verify-email` and `/auth/reset-password` landing pages (which previously 404'd on consumer
+  apps because the SDK shipped no page for them), mirroring the existing OAuth black-box:
+  `EmailVerificationHandler` / `useEmailVerification`, `PasswordResetHandler` / `usePasswordReset` (with
+  a minimal default new-password form + `renderForm` escape hatch), and `ResendVerificationButton` /
+  `useResendVerification`. A shared `parseAuthLink` **fails closed on projectId mismatch** (a token
+  minted for another project is never sent) and `stripTokenFromUrl` removes the one-time token from the
+  URL after use. Reset and resend POST directly via the SDK's public `getApiBaseUrl()` (the
+  `PushTokenAdapter` pattern) — no `agora-sdk` fork change; resend can't use core's
+  `useSendVerificationEmail`, which omits the `email` the server requires.
+
 ### Fixed
 
 - **`@agora-sdk/auth-react-js` — corrected the `useSignOutEverywhere` TSDoc.** It claimed

@@ -9,6 +9,8 @@ vi.mock("@agora-sdk/react-js", () => ({
   useUser: vi.fn(),
   useProject: vi.fn(),
   useSignOutAll: vi.fn(),
+  useVerifyEmail: vi.fn(),
+  getApiBaseUrl: vi.fn(),
 }));
 
 import * as api from "./index";
@@ -22,5 +24,14 @@ describe("public API", () => {
     expect(typeof api.useAuthSelfHeal).toBe("function");
     // storage seam is exported for advanced consumers
     expect(typeof api.accountsStorageKey).toBe("function");
+  });
+
+  it("exports the email-link handlers", () => {
+    expect(typeof api.useEmailVerification).toBe("function");
+    expect(typeof api.EmailVerificationHandler).toBe("function");
+    expect(typeof api.usePasswordReset).toBe("function");
+    expect(typeof api.PasswordResetHandler).toBe("function");
+    expect(typeof api.useResendVerification).toBe("function");
+    expect(typeof api.ResendVerificationButton).toBe("function");
   });
 });

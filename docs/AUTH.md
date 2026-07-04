@@ -101,6 +101,75 @@ import { useAuthSelfHeal } from "@agora-sdk/auth-react-js";
 function App() { useAuthSelfHeal(); return <Thread />; } // prunes a dead active account, once
 ```
 
+## Email links: verify, reset, resend 💌
+
+Native-auth projects send transactional email whose links land on **your** front-end, not the API:
+the server builds `{origin}/auth/verify-email?projectId&token` and `{origin}/auth/reset-password?projectId&token`
+(see agora-server `sender.ts`). Without a page at those routes the link **404s**. These three helpers
+are the same class of black-box as the OAuth pair — parse a token from the URL, call the right endpoint,
+show state, redirect — so integrators stop hand-writing (and mis-writing) them.
+
+**Shared safety, every consumed link:**
+
+- **Fail closed on projectId mismatch.** `parseAuthLink` compares the link's `projectId` to the
+  provider's; a token minted for another project is **never** sent — the flow errors with no network
+  call. (A link that omits `projectId` defers to the provider's id.)
+- **Token hygiene.** After a successful verify/reset, `stripTokenFromUrl()` removes the one-time token
+  from the address bar via `history.replaceState`, so it doesn't linger in history or leak to analytics
+  that scrape `location.href`.
+- **Never logged.** The token and any password are kept out of every log line, thrown `Error`, and
+  `onError` payload.
+
+### `useEmailVerification` / `<EmailVerificationHandler>` — the verify page
+
+Wraps the SDK's `useVerifyEmail`. On mount: parse the token, verify, strip token, optionally redirect.
+
+```tsx
+// route: /auth/verify-email
+<EmailVerificationHandler redirectTo="/?verified=1" onError={(m) => toast(m)} />
+```
+
+| Prop | Meaning |
+|---|---|
+| `redirectTo?` | full-page navigate on success; omit to render the `success` slot |
+| `redirectDelayMs?` | delay before the success redirect (default 0) |
+| `onSuccess?` / `onError?` | lifecycle callbacks (`onError` gets a user-facing message) |
+| `pending?` / `success?` | render slots (plain text defaults) |
+| `error?` | `(message) => ReactNode` render slot |
+
+States: `pending → success \| error`. The hook (`useEmailVerification`) returns `{ status, error }` for a
+fully custom page.
+
+### `usePasswordReset` / `<PasswordResetHandler>` — the reset page
+
+Two steps on one page: land (parse token) → type a new password → submit. Because **core has no
+reset-password hook**, `submit` POSTs `{ token, newPassword }` directly to `/:pid/auth/reset-password`
+via the SDK's public `getApiBaseUrl()` — the same pattern `@agora-sdk/react-js`'s own `PushTokenAdapter`
+uses. The endpoint is intentionally unauthenticated (a recovery flow). No `agora-sdk` fork change.
+
+```tsx
+// route: /auth/reset-password — ships a minimal new-password form (new + confirm, match/length checks)
+<PasswordResetHandler redirectTo="/signin?reset=1" minLength={8} />
+```
+
+The default form stays unstyled with stable `className`s (`agora-password-reset*`) for your CSS; pass
+`renderForm={(api) => …}` to replace it entirely with the hook's `{ status, error, submit }`. States:
+`ready → submitting → success \| error`, plus `invalid-link` when the landing link is bad (the form is
+not rendered). Client-side length mirrors the server's `min(8)`.
+
+### `useResendVerification` / `<ResendVerificationButton>` — the "didn't get it?" action
+
+Not a landing page — a button. It POSTs `{ email, emailRedirectTo }` directly (`emailRedirectTo`
+defaults to `window.location.origin`). **Why not core's `useSendVerificationEmail`?** That hook sends an
+upstream-Replyke body and **omits `email`**, which agora-server's route requires — so it 400s. We send
+the contract the server actually validates.
+
+```tsx
+<ResendVerificationButton email={user.email} onSent={() => toast("Sent!")} />
+```
+
+States: `idle → sending → sent \| error`; the button disables while sending.
+
 ## Design guarantees 🧼
 
 - **Gates on the persisted row, not volatile store state.** `useOAuthCallback` declares success only
