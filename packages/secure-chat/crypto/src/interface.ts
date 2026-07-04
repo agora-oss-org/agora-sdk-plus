@@ -114,26 +114,87 @@ export class SecureChatDecryptError extends Error {
   }
 }
 
+/**
+ * The client crypto seam for Agora secure chat — every RFC 9420 MLS operation a device needs, with
+ * no method touching the network. All group secrets and private keys live only in an implementation's
+ * memory (or its own persistence round-trip via the `export*`/`import*` pairs); the blind Delivery
+ * Service only ever sees the `Uint8Array` outputs (KeyPackages, Commits, Welcomes, ciphertext) that
+ * cross the wire base64-encoded. Implementations: {@link SecureChatDecryptError}-throwing
+ * `MockSecureChatCrypto` (`@agora-sdk/secure-chat-crypto/testing`, deterministic, test-only) and
+ * `TsMlsSecureChatCrypto` (`@agora-sdk/secure-chat-crypto/ts-mls`, the real RFC 9420 core). Inject an
+ * instance into `<SecureChatProvider crypto={…}>`.
+ */
 export interface SecureChatCrypto {
   // ── identity / device ──────────────────────────────────────────────────────
+  /**
+   * Mint this device's long-lived MLS identity (signature keypair + credential) for one leaf.
+   *
+   * @param opts - `deviceId` (the stable client-chosen id) and an optional `ciphersuite` override.
+   * @returns The public {@link DeviceIdentity} to register server-side, plus an opaque `privateState`
+   *   blob the caller persists (survives a reload via {@link importDeviceState}/{@link exportDeviceState}).
+   */
   generateDeviceIdentity(opts: { deviceId: string; ciphersuite?: number }): Promise<{
     identity: DeviceIdentity;
     privateState: Uint8Array;
   }>;
+  /**
+   * Generate `count` fresh, single-use {@link KeyPackageBundle}s for this device so peers can add it
+   * to a group. Each KeyPackage's private half stays in this instance's memory (captured by the next
+   * {@link exportDeviceState}); only the public halves are meant to be published to the server.
+   *
+   * @param count - How many KeyPackages to mint.
+   * @returns The minted bundles, ready to base64-encode and publish.
+   */
   generateKeyPackages(count: number): Promise<KeyPackageBundle[]>;
 
   // ── group lifecycle (client-side; the server only relays the outputs) ───────
+  /**
+   * Create a new MLS group seeded with this device as the sole initial member, then commit
+   * `initialMembers` in (added from their claimed KeyPackages) in the same operation.
+   *
+   * @param opts - An optional explicit `mlsGroupId` (random if omitted) and the `initialMembers` to add
+   *   (their claimed public KeyPackage bytes).
+   * @returns The new {@link GroupHandle} (epoch 0 or 1, depending on whether members were added) and one
+   *   {@link TargetedWelcome} per added member to relay via the blind DS.
+   */
   createGroup(opts: {
     mlsGroupId?: Uint8Array;
     initialMembers: { deviceId: string; keyPackage: Uint8Array }[];
   }): Promise<{ group: GroupHandle; welcomes: TargetedWelcome[] }>;
+  /**
+   * Commit adding one new device to an existing group.
+   *
+   * @param group - The local group handle to add to (must be a current member).
+   * @param newDevice - The device id and its claimed public KeyPackage bytes.
+   * @returns A {@link CommitResult}: the broadcast Commit plus the new member's targeted Welcome.
+   * @throws {Error} When the group is unknown (not joined or evicted).
+   */
   addMember(
     group: GroupHandle,
     newDevice: { deviceId: string; keyPackage: Uint8Array }
   ): Promise<CommitResult>;
+  /**
+   * Commit removing a device from an existing group.
+   *
+   * @param group - The local group handle to remove from.
+   * @param leafDeviceId - The device id of the member to remove.
+   * @returns A {@link CommitResult} (no Welcomes — removal never adds a member).
+   * @throws {Error} When the group is unknown, or (Phase 2 web core) removal isn't implemented yet.
+   */
   removeMember(group: GroupHandle, leafDeviceId: string): Promise<CommitResult>;
 
   // ── application messages ────────────────────────────────────────────────────
+  /**
+   * Encrypt one plaintext application message under the group's current epoch. Advances this
+   * instance's send ratchet — the caller MUST persist the resulting state (via
+   * {@link exportGroupState}) before relying on the send having "happened", or a reload can rewind the
+   * ratchet and cause the peer to reject a resend as a replay.
+   *
+   * @param group - The local group handle to encrypt under.
+   * @param plaintext - The message bytes to seal (already framed/padded by the caller).
+   * @returns The MLS ciphertext bytes and the epoch it was encrypted under.
+   * @throws {Error} When the group is unknown (not joined or evicted).
+   */
   encryptMessage(
     group: GroupHandle,
     plaintext: Uint8Array
@@ -186,12 +247,51 @@ export interface SecureChatCrypto {
   exportSecret(group: GroupHandle, label: string, context: Uint8Array, length: number): Promise<Uint8Array>;
 
   // ── processing inbound handshakes ───────────────────────────────────────────
+  /**
+   * Join a group from a Welcome addressed to this device, consuming the matching pending KeyPackage.
+   *
+   * @param welcome - The MLS Welcome bytes (base64-decoded at the wire boundary).
+   * @returns The new {@link GroupHandle} for the joined group.
+   * @throws {Error} On a malformed Welcome, or when no pending KeyPackage matches it.
+   */
   processWelcome(welcome: Uint8Array): Promise<GroupHandle>;
+  /**
+   * Apply an inbound Commit, advancing the group to its new epoch.
+   *
+   * @param group - The local group handle the Commit applies to.
+   * @param commit - The MLS Commit bytes (base64-decoded at the wire boundary).
+   * @returns The {@link GroupHandle} at the new (post-Commit) epoch.
+   * @throws {Error} When the group is unknown, or the bytes don't decode as a Commit.
+   */
   processCommit(group: GroupHandle, commit: Uint8Array): Promise<GroupHandle>; // advances epoch
+  /**
+   * Apply an inbound Proposal (no-ops until the Commit that references it arrives).
+   *
+   * @param group - The local group handle the Proposal applies to.
+   * @param proposal - The MLS Proposal bytes (base64-decoded at the wire boundary).
+   * @throws {Error} When the group is unknown, or the bytes don't decode as a Proposal.
+   */
   processProposal(group: GroupHandle, proposal: Uint8Array): Promise<void>;
 
   // ── local MLS state persistence (IndexedDB on web; opaque serialization) ────
+  /**
+   * Serialize a group's full local MLS state (secrets included) to an opaque blob for persistence
+   * (e.g. IndexedDB on web). Call after any operation that advances the group (a send/receive ratchet
+   * step, a processed Commit/Welcome) so a reload never rewinds it.
+   *
+   * @param group - The local group handle to serialize.
+   * @returns The opaque state bytes; round-trips via {@link importGroupState}.
+   * @throws {Error} When the group is unknown (not joined or evicted).
+   */
   exportGroupState(group: GroupHandle): Promise<Uint8Array>;
+  /**
+   * Restore a group's local MLS state from an {@link exportGroupState} blob, repopulating this
+   * instance's in-memory group map.
+   *
+   * @param state - The opaque bytes previously produced by {@link exportGroupState}.
+   * @returns The restored {@link GroupHandle}.
+   * @throws {Error} When `state` is corrupt or was produced by an incompatible crypto implementation.
+   */
   importGroupState(state: Uint8Array): Promise<GroupHandle>;
 
   // ── device-state persistence (re-hydrate identity after a reload) ───────────

@@ -129,7 +129,7 @@ Both recurring gaps — "persist `privateState`" and "resolve `conversationId �
 ### 7. Tests + a working demo
 - [x] Mock-backed (`@agora-sdk/secure-chat-crypto/testing`) unit tests of the hooks.
       *(`useSecureDevice`/`useSecureConversations`/`useSecureMessages`/`useSecureHandshakes` `.test.tsx`,
-      plus transport, persistence, crypto, and ciphersuite suites — 56 tests via `pnpm test`.)*
+      plus transport, persistence, crypto, and ciphersuite suites — 355 tests via `pnpm test`.)*
 - [x] An e2e against a **running agora-server** proving, from the client side, the round-trip
       (register → DM → send → receive → reload-survives → restore-on-new-browser) and that the server
       only ever stored ciphertext. Consider wiring a secure-chat screen into `agora-demo`.
@@ -151,7 +151,7 @@ passphrase backup, with the server storing **only ciphertext**.
 
 - **Consume the mock** from `@agora-sdk/secure-chat-crypto/testing` (already exported).
 - **`@agora-server/contract`** — ✅ done: published, and a `dependency` of `@agora-sdk/secure-chat-core`
-  (`^0.9.3`). `core/src/contract/` is now a type-only re-export of its secure-chat surface (no more
+  (`^0.13.0`). `core/src/contract/` is now a type-only re-export of its secure-chat surface (no more
   copied types). The contract exports the request-body types (`z.input` of its schemas) as of 0.9.3.
 - **Coordinate with the server team on:** publishing `@agora-server/contract`; retiring their
   `packages/secure-chat-core/` in favor of consuming our crypto in tests; and the **channel committer

@@ -80,6 +80,14 @@ interface WelcomePayload {
   members: string[]; // roster carried in the Welcome so a joiner sees the same members
 }
 
+/**
+ * A deterministic, dependency-free MOCK implementation of {@link SecureChatCrypto}. NOT
+ * cryptographically secure — import it only from the `@agora-sdk/secure-chat-crypto/testing` subpath
+ * for unit tests and early UI work (never in shipped/production code). See the file header for the two
+ * properties (reversible + plaintext-hiding XOR, and cross-instance Welcome-carried secrets) that make
+ * it a faithful enough stand-in to exercise the blind Delivery Service end to end without a real MLS
+ * library.
+ */
 export class MockSecureChatCrypto implements SecureChatCrypto {
   private identity?: DeviceIdentity;
   private privateState?: Uint8Array;
