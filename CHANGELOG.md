@@ -6,6 +6,8 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+## [0.10.1] — 2026-07-04
+
 ### Fixed
 
 - **`@agora-sdk/secure-chat-core` — a transiently-`rejected` message could stay stuck forever after a
