@@ -6,6 +6,21 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Fixed
+
+- **`@agora-sdk/secure-chat-core` — a transiently-`rejected` message could stay stuck forever after a
+  reload.** `useSecureMessages`' group-advance retry effect re-attempted only `pending` (buffered
+  ahead-of-epoch) rows, never `rejected` ones. A message decrypted in the narrow window where the group
+  handle is still mid-swap (e.g. right after a fresh Welcome is processed on reload) throws in
+  `decryptMessage` and — because its epoch isn't *ahead* — settles to `rejected`; a reload delivers that
+  message only once (via `load`), so there was no second live event to rescue it and it stuck at
+  `rejected` permanently. The retry effect now re-attempts `rejected` rows too. **Fail-closed is
+  preserved:** the crypto seam remains the enforcement point, so a genuine replay/gap/bad-auth/tamper
+  message re-throws on every retry and never becomes plaintext (covered by an updated fail-closed test).
+  Surfaced as a flaky CI failure — the `browser-runtime` reload test failed intermittently on the
+  node-22 job's slower 2-vCPU runner (which widened the race window) while node 20 and re-runs passed on
+  the identical commit.
+
 ## [0.10.0] — 2026-07-04
 
 ### Added

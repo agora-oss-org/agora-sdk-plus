@@ -147,6 +147,64 @@ describe("useSecureMessages", () => {
     expect(result.current.messages.filter((x) => x.model.id === "m1")).toHaveLength(1);
   });
 
+  it("re-decrypts a REJECTED row when the group handle advances (transient reject must not stick)", async () => {
+    // The flaky-on-CI reload bug (node-22, 2-vCPU runner). Bob reloads, processes a fresh Welcome, and
+    // the first application message is decrypted in the narrow window where the group handle is still
+    // mid-swap — decryptMessage throws and the row settles to `rejected`. Unlike the live-upgrade path,
+    // a reload delivers the message only ONCE (via load), so there is no second live event to rescue it.
+    // The group-advance retry effect must therefore re-attempt `rejected` rows too — not only `pending`
+    // ones. Fail-closed is preserved: a genuinely bad message just re-throws and stays rejected (the mock
+    // here simulates the transient case by decrypting fine once the handle advances).
+    const creator = new MockSecureChatCrypto();
+    await creator.generateDeviceIdentity({ deviceId: "alice" });
+    const { group: cgroup, welcomes } = await creator.createGroup({
+      initialMembers: [{ deviceId: "row-1", keyPackage: new Uint8Array() }],
+    });
+    const { ciphertext, epoch } = await creator.encryptMessage(cgroup, mimiFrame("hello"));
+
+    // Recipient crypto: throws while `armed` (the transient reject), succeeds once disarmed.
+    class ArmableCrypto extends MockSecureChatCrypto {
+      armed = true;
+      override async decryptMessage(g: Parameters<MockSecureChatCrypto["decryptMessage"]>[0], ct: Uint8Array) {
+        if (this.armed) throw new Error("decrypt failed (group handle mid-swap)");
+        return super.decryptMessage(g, ct);
+      }
+    }
+    const crypto = new ArmableCrypto();
+    const g1 = await crypto.processWelcome(welcomes.find((w) => w.targetDeviceId === "row-1")!.payload);
+    const store = new MemoryStore();
+    const repo = new SecureChatRepository(store);
+    await repo.saveGroupState("conv-1", await crypto.exportGroupState(g1));
+    await repo.saveDevice({ deviceId: "me", deviceState: new Uint8Array([1]), device: row });
+
+    const msg: SecureMessageModel = {
+      id: "m1", projectId: "p", conversationId: "conv-1", senderUserId: "alice", senderDeviceId: "alice-row",
+      epoch: epoch.toString(), ciphertext: toBase64(ciphertext), contentType: "text/plain", createdAt: "",
+    };
+    vi.spyOn(SecureChatRestClient.prototype, "listMessages").mockResolvedValue({ messages: [msg], hasMore: false });
+
+    // Drive the group handle explicitly so we can "advance" it deterministically. g1 → rejected.
+    const { result, rerender } = renderHook(
+      ({ g }: { g: Awaited<ReturnType<typeof crypto.processWelcome>> }) => useSecureMessages("conv-1", { group: g }),
+      { wrapper: wrap(crypto, store), initialProps: { g: g1 } }
+    );
+    await waitFor(() => expect(result.current.messages.find((m) => m.model.id === "m1")?.status).toBe("rejected"));
+
+    // The group handle advances (a fresh, correct handle lands) and decrypt now works. No live re-delivery.
+    crypto.armed = false;
+    const g2 = await crypto.importGroupState(await crypto.exportGroupState(g1)); // distinct handle identity
+    await act(async () => {
+      rerender({ g: g2 });
+    });
+
+    await waitFor(() => {
+      const m = result.current.messages.find((x) => x.model.id === "m1");
+      expect(m?.status).toBe("ok");
+      expect(m?.content?.body).toBe("hello");
+    });
+    expect(result.current.messages.filter((x) => x.model.id === "m1")).toHaveLength(1);
+  });
+
   it("decrypts a message whose load finishes AFTER the group resolves (live group, not a stale closure)", async () => {
     // The exact demo bug: on a fresh page load the message fetch is in flight while resolveGroup is
     // still running, so the load's `decrypt` closure captured `group = null`. If the fetch then
@@ -316,7 +374,12 @@ describe("useSecureMessages — generation-counter rejection (fail closed)", () 
     expect(result.current.msgs.messages[0]?.content?.body).toBe("hello");
   });
 
-  it("never retries a rejected message when the group advances", async () => {
+  it("re-attempts a rejected message when the group advances, but a genuinely bad one STAYS rejected (fail closed)", async () => {
+    // The group-advance retry effect re-attempts `rejected` rows (so a transient wrong-group reject can
+    // recover — see the reload regression in the first describe block). This must NOT weaken fail-closed:
+    // the crypto seam is the enforcement point, so a genuine replay re-throws on every retry and never
+    // becomes plaintext. Here decryptMessage rejects `replay` unconditionally → the row is re-decrypted
+    // on advance (proving the retry now covers rejected rows) yet stays `rejected`, never `ok`.
     const { crypto, store, group } = await seed();
     const spy = vi
       .spyOn(crypto, "decryptMessage")
@@ -332,13 +395,15 @@ describe("useSecureMessages — generation-counter rejection (fail closed)", () 
     await waitFor(() => expect(result.current.msgs.messages[0]?.status).toBe("rejected"));
     const callsWhenRejected = spy.mock.calls.length;
 
-    // Advance the group — the retry effect runs, but a rejected row must be excluded.
+    // Advance the group — the retry effect runs and DOES re-attempt the rejected row.
     await act(async () => {
       await result.current.chat.rememberGroup("conv-1", { mlsGroupId: group.mlsGroupId, epoch: 1n });
     });
     await waitFor(() => expect(result.current.chat.getGroupVersion("conv-1")).toBeGreaterThan(0));
-    expect(spy.mock.calls.length).toBe(callsWhenRejected); // not re-decrypted
+    await waitFor(() => expect(spy.mock.calls.length).toBeGreaterThan(callsWhenRejected)); // re-decrypted
+    // …but the crypto seam fail-closes every time: a genuine replay never upgrades to ok.
     expect(result.current.msgs.messages[0]?.status).toBe("rejected");
+    expect(result.current.msgs.messages[0]?.content?.body).toBeUndefined();
   });
 });
 

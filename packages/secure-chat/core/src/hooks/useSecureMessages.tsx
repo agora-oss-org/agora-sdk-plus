@@ -397,14 +397,23 @@ export function useSecureMessages(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
-  // Retry buffered (pending) rows when the group handle advances.
+  // Retry non-ok rows when the group handle advances. Covers `pending` (buffered ahead-of-epoch) AND
+  // `rejected`: a row can settle to `rejected` when a message is decrypted in the narrow window where the
+  // group handle is still mid-swap (e.g. right after a reload processes a fresh Welcome) — decryptMessage
+  // throws while `grp` is stale, and since the epoch isn't ahead it isn't buffered. A reload delivers the
+  // message only once (via load), so there is no second live event to rescue it (the live-receive upgrade
+  // path). Re-attempting on group-advance closes that gap. Fail-closed is preserved: a genuinely bad
+  // message (replay/gap/bad-auth/tamper) simply re-throws and stays `rejected` — re-decrypting never
+  // yields plaintext for it, and an already-`ok` row is terminal and never re-touched.
   useEffect(() => {
     if (!group) return;
-    const pendingModels = [...byIdRef.current.values()].filter((e) => e.status === "pending").map((e) => e.model);
-    if (pendingModels.length === 0) return;
+    const retryModels = [...byIdRef.current.values()]
+      .filter((e) => e.status === "pending" || e.status === "rejected")
+      .map((e) => e.model);
+    if (retryModels.length === 0) return;
     let alive = true;
     (async () => {
-      for (const m of pendingModels) {
+      for (const m of retryModels) {
         const outcome = await decrypt(m);
         if (!alive) return;
         ingest(m, outcome);
