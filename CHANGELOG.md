@@ -6,6 +6,8 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-07-04
+
 ### Added
 
 - **`@agora-sdk/auth-react-js` — email-link handlers.** Drop-ins for the server's emailed
