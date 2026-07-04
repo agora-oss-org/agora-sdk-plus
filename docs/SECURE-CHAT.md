@@ -14,11 +14,14 @@ service**: it stores and relays opaque base64 blobs (KeyPackages, Welcomes, Comm
 encrypted backups) and **never sees plaintext**. All the crypto lives here, client-side, behind a
 swappable `SecureChatCrypto` seam.
 
-> **Status: Phase 2 in progress.** Structure, transport, provider/hooks, persistence, and handshake
-> processing are built; the real MLS crypto (**ts-mls**) is wired on web
-> (`@agora-sdk/secure-chat-crypto/ts-mls`) and proven end-to-end against a running agora-server.
-> Remaining Phase 2: KeyPackage replenishment tuning, passphrase backup/restore, generation-counter
-> enforcement. Not yet published to npm.
+> **Status: Phase 2 Definition of Done met.** Transport, provider/hooks, persistence, handshake
+> processing, the real MLS crypto (**ts-mls**) on web (`@agora-sdk/secure-chat-crypto/ts-mls`),
+> KeyPackage replenishment, generation-counter enforcement, metadata hardening (padding + safety
+> numbers), and encryption-at-rest are all shipped and proven end-to-end against a running
+> agora-server. Passphrase backup/restore is implemented (real argon2id + AEAD) but now
+> **deprecated** in favor of device-to-device history restore (IUC) and `createEncryptedStore` — see
+> [`packages/secure-chat/ROADMAP.md`](../packages/secure-chat/ROADMAP.md) §5. The one remaining Phase 2
+> item is hardening the `409` epoch-conflict rebase on membership commits. Published to npm (current: 0.9.x).
 
 ## Packages 📦
 

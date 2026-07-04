@@ -26,7 +26,7 @@ There's also a non-test **diagnostic** (`pnpm chat-diag`) and a packaging **guar
 
 ```bash
 pnpm install
-pnpm test            # unit suite — fully mocked, no server. 383 cases across ~54 files
+pnpm test            # unit suite — fully mocked, no server. 439 cases across 54 files
 pnpm test:watch      # vitest watch mode while iterating
 pnpm typecheck       # tsc --noEmit at the root (not a test, but part of "green")
 

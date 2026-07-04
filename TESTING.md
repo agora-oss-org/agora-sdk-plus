@@ -38,11 +38,10 @@ either.
 - **Aliases (so tests run against source, no build needed):**
   - `@agora-sdk/secure-chat-crypto` and `…/testing` → the in-repo crypto package source, so tests
     `import { MockSecureChatCrypto } from "@agora-sdk/secure-chat-crypto/testing"` directly.
-  - `@agora-sdk/social-core` → its source.
-  - `@agora-sdk/core` → a minimal in-repo stub ([`test-support/agora-sdk-core-stub.ts`](test-support/agora-sdk-core-stub.ts))
-    exporting only `getApiBaseUrl` / `getSocketUrl`. Resolution is lazy (those only fire inside the
-    axios interceptor / socket connect), and tests always override URLs via props, so the stub is never
-    actually called.
+  - `@agora-sdk/secure-chat-core` and `@agora-sdk/social-core` → their source.
+  - **No `@agora-sdk/core` alias.** Neither secure-chat nor social depends on `@agora-sdk/core` any
+    more — they take `baseUrl` directly (see `CHANGELOG.md`) — so there is nothing to stub. The former
+    `test-support/agora-sdk-core-stub.ts` was removed along with the alias.
 
 **Rules for unit tests** (enforced expectations — see [`CLAUDE.md`](CLAUDE.md) → Engineering standards §5):
 
@@ -165,17 +164,17 @@ runs **once per crypto variant**: the deterministic mock, then the real **ts-mls
 
 Run:
 ```bash
-# 1. Start agora-server pointed at a Postgres you can write to (listens on :4000).
-#    In the agora-server repo: pnpm db:migrate && pnpm dev:api
+# 1. Start the standalone `@agora/secure-chat` process pointed at a Postgres you can write to
+#    (default port :4002 — it serves both the secure REST and the /secure-socket/ realtime; the
+#    main API on :4000 has neither). See the agora-server repo for the exact start command.
 # 2. Run the e2e (env must match THAT running server — see Environment):
 pnpm test:e2e
 ```
 
-> **The #1 e2e gotcha:** `AGORA_E2E_DATABASE_URL` must point at the database the **running** server
-> actually reads (normally its DEV db while `pnpm dev:api` is up) — **not** the server's own internal
-> test database. If the test seeds one db and the server reads another, the seeded project is invisible
-> to the server and **every** secure-chat request 404s (a long cascade of `undefined` ids). See
-> [`.env.example`](.env.example).
+> **The #1 e2e gotcha:** `AGORA_E2E_DATABASE_URL` must point at the database the **running** secure-chat
+> process actually reads (normally its DEV db) — **not** the server's own internal test database. If
+> the test seeds one db and the server reads another, the seeded project is invisible to the server and
+> **every** secure-chat request 404s (a long cascade of `undefined` ids). See [`.env.example`](.env.example).
 
 ---
 
@@ -247,8 +246,8 @@ Layers 3–4 need two env vars (the other two are optional). Copy [`.env.example
 |---|---|---|
 | `AGORA_E2E_DATABASE_URL` | **yes** (also the run gate) | Postgres the e2e seeds into — **must be the db the running server reads** (its DEV db), not the server's internal test db. |
 | `AGORA_E2E_ACCESS_TOKEN_SECRET` | **yes** | The running server's `ACCESS_TOKEN_SECRET`; minted tokens must verify under it. |
-| `AGORA_E2E_BASE_URL` | no (default `http://localhost:4000/v7`) | REST base incl. the `/v7` prefix. |
-| `AGORA_E2E_SOCKET_URL` | no (default `http://localhost:4000`) | Socket.io origin (the client appends `/secure`). |
+| `AGORA_E2E_BASE_URL` | no (default `http://localhost:4002/v7`) | REST base incl. the `/v7` prefix — the standalone secure-chat process, not the main API on `:4000`. |
+| `AGORA_E2E_SOCKET_URL` | no (default `http://localhost:4002`) | Socket.io origin (the client appends `/secure`). |
 
 If `AGORA_E2E_DATABASE_URL` is set but `AGORA_E2E_ACCESS_TOKEN_SECRET` is missing, `bootstrap.ts` fails
 fast with a clear message rather than deep inside an auth check.

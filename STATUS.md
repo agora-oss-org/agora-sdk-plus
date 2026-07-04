@@ -11,8 +11,9 @@ A running ledger of what's built, what's stubbed, and the cross-repo work this d
   `/secure` socket client, `SecureChatProvider` + hooks, base64 utils. Depends on the crypto package
   for the interface; consumes the wire types from the published `@agora-server/contract` (type-only
   re-export in `core/src/contract/`).
-- Platform packages: `react-js` (Phase 2 web, crypto/persistence placeholders), `react-native` +
-  `expo` (Phase 3 stubs).
+- Platform packages: `react-js` (Phase 2 web — **done**: real ts-mls crypto, IndexedDB persistence,
+  KeyPackage replenishment, replay/gap enforcement, metadata padding; see "What's next" below),
+  `react-native` + `expo` (Phase 3 stubs).
 
 ## The architecture decision (corrected)
 
@@ -26,7 +27,7 @@ package) and would have published AGPL crypto. The corrected model, agreed with 
 | Artifact | Home | Relationship |
 |---|---|---|
 | `SecureChatCrypto` interface + mock + the real ts-mls core (`./ts-mls`) | **this repo** (`@agora-sdk/secure-chat-crypto`, Apache-2.0) | agora-server **dev-depends** on it for tests — a consumer, like agora-demo consumes the published SDK |
-| secure-chat wire types (`Secure*Model`, request bodies) | **agora-server** (`@agora-server/contract`, Apache-2.0) | this SDK **depends on** it (`^0.9.3`); `core/src/contract/` is a type-only re-export (the stand-in copy is gone) |
+| secure-chat wire types (`Secure*Model`, request bodies) | **agora-server** (`@agora-server/contract`, Apache-2.0) | this SDK **depends on** it (currently `^0.13.0` on `secure-chat-core`, `^0.12.1` on `social-core`; bumped as the contract's surface has grown — see `CLAUDE.md`); `core/src/contract/` is a type-only re-export (the stand-in copy is gone) |
 
 Why this is right: it removes the dependency inversion, and it dissolves the license problem — the
 seam was AGPL-3.0 inside the AGPL server; moved into this Apache-2.0 repo (sole-author relicense) it
@@ -45,7 +46,8 @@ becomes safely consumable by third parties.
 - Update the server's `CHAT_TODO.md` to this model (crypto → SDK; contract stays; SDK builds on it).
 
 ### this repo (when `@agora-server/contract` is published) — ✅ done (2026-06-08)
-- `@agora-server/contract@^0.9.3` is a `dependency` of `@agora-sdk/secure-chat-core`. The former
+- `@agora-server/contract` (originally pinned `^0.9.3`, since bumped to `^0.13.0` on `secure-chat-core`
+  and `^0.12.1` on `social-core` as the contract's surface grew) is a `dependency` of both. The former
   byte-faithful stand-in copy is replaced by a **type-only re-export** in `core/src/contract/` (kept as
   a thin barrel so the internal import path is stable and the public surface stays scoped to
   secure-chat). The contract added the request-**body** types (`z.input` of its schemas) in 0.9.3, so
@@ -60,10 +62,13 @@ handshake ordering, backup UX, tests, and the per-file map of where each task pl
 — lives in **[`packages/secure-chat/ROADMAP.md`](packages/secure-chat/ROADMAP.md)**. That's the SDK
 team's checklist; this file stays the present-state + cross-repo ledger.
 
-In short: Phase 2 makes the crypto real (implement `SecureChatCrypto` in
-`@agora-sdk/secure-chat-crypto`, wire it + IndexedDB into `@agora-sdk/secure-chat-react-js`) and
-persists group state; Phase 3 brings native (RN/Expo keystore, multi-device). Open design questions
-(channel committer, padding, replay detection) are tracked in the roadmap.
+In short: **Phase 2's Definition of Done is met** — real `SecureChatCrypto` (ts-mls), IndexedDB
+persistence, KeyPackage replenishment, generation-counter replay/gap enforcement, and metadata
+hardening (padding + safety numbers) are all shipped. Passphrase backup/restore shipped too but is now
+**deprecated** in favor of device-to-device IUC history restore + the local `createEncryptedStore`
+at-rest decorator (Phase 2.5). The one remaining Phase-2 hardening item is the `409
+secure-chat/epoch-conflict` rebase-on-retry for membership commits. Phase 3 brings native (RN/Expo
+keystore, multi-device). See the roadmap for the full, current task-by-task state.
 
 ### MLS core decision (2026-06-08)
 

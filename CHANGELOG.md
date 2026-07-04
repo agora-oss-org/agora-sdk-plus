@@ -8,7 +8,32 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Fixed
 
+- **`@agora-sdk/auth-react-js` — corrected the `useSignOutEverywhere` TSDoc.** It claimed
+  `signOutEverywhere` "rejects if the server revoke fails," but the SDK's `signOutAllThunk` treats each
+  account's server-side revoke as best-effort (caught + logged, never rethrown), so a server-side
+  failure never surfaces as a rejection — local state is unconditionally cleared. The doc now describes
+  that behavior accurately; the only rejection path is an unexpected failure, not a server revoke. No
+  runtime behavior changed.
+
+- Docs — `SocialProvider` usage examples (`docs/SOCIAL-GRAPH.md`, `packages/social/react-js/README.md`, and the `@example` TSDoc blocks in `social-context.tsx` / the web + React Native `<CommunityWeather />`) omitted the required `baseUrl` prop. `baseUrl` has no default (social is a standalone transport, per the "no `@agora-sdk/core` dependency" design) and every unit test already passes it — only the docs/examples had drifted stale. No behavior changed.
+
 - **`@agora-sdk/social-core` — every lens (Weather / Constellation / Neighborhood) rendered empty and never issued a request.** `SocialRestClient.getTransparency()` raw-**cast** the server's `GET /social/transparency` body to `ResolvedSocialConfig`, but the endpoint returns a **nested** DTO (`{ garden, analytics, decay }`), not the flat `*Enabled` shape the hooks gate on. Every flat key (`weatherEnabled`, `constellationEnabled`, `neighborhoodEnabled`, …) resolved to `undefined`, so each `useSocial*` hook self-gated to disabled and fetched nothing — surfacing as `null` data with no error. Added a typed `SocialTransparencyWire` plus a pure, fail-closed `transparencyToConfig()` mapper (`garden.weather → weatherEnabled`, etc.; non-`true` values coerce to `false`); `getTransparency()` now maps instead of casting. The three resolver-only fields transparency does not expose (`neighborhoodIncludeInteractions`, `frictionVisibleToStewards`, `constellationKFloor`) get safe defaults. Note: for a project whose `neighborhoodIncludeInteractions` default is `true`, the server's `transparencyView` must also expose that field for the SDK to honor it as the initial toggle state.
+
+- Docs — secure chat's Phase status had drifted stale. `docs/SECURE-CHAT.md` (and its generated copy `packages/secure-chat/react-js/SECURE-CHAT.md`) still said "Phase 2 in progress" with KeyPackage replenishment, passphrase backup/restore, and generation-counter enforcement listed as remaining, and "Not yet published to npm" — all of that shipped and the packages have been on npm since 0.x (`packages/secure-chat/ROADMAP.md` already tracked this accurately; the overview doc hadn't caught up). `docs/SECURE-CHAT-ROADMAP.md`'s Phase 2 checklist was even further behind — every item was still shown unchecked (`- [ ]`) despite being done — and pointed readers at `packages/secure-chat/ROADMAP.md` as the up-to-date, granular tracker. Also corrected `packages/secure-chat/ROADMAP.md`'s stale `@agora-server/contract` pin (said `^0.9.3`, actually `^0.13.0`) and unit-test count (said 56, actually 355). No runtime behavior changed.
+
+- **`@agora-sdk/secure-chat-crypto` — added missing TSDoc.** The `SecureChatCrypto` interface (the seam's central export) had no top-level doc comment, and 11 of its methods (`generateDeviceIdentity`, `generateKeyPackages`, `createGroup`, `addMember`, `removeMember`, `encryptMessage`, `processWelcome`, `processCommit`, `processProposal`, `exportGroupState`, `importGroupState`) had only a section-header line comment, not a per-member TSDoc block, in violation of the engineering standard that every exported symbol (and interface member) carries one. `MockSecureChatCrypto` was similarly missing a class-level doc block. No runtime behavior changed.
+
+- Cross-cutting docs audit: several top-level docs had drifted from the code. `CLAUDE.md`'s `build-all`
+  bullet claimed `secure-chat-react-js` was the *only* ESM-only package, but `social-react-js` is ESM-only
+  too (its own `package.json` says so) — corrected both the prose and the `social` package table.
+  `STATUS.md` and `UPSTREAM_FIX.md` still described `secure-chat-core`/`social-core` as depending on
+  `@agora-sdk/core`, a coupling dropped by the `baseUrl`-required refactor — updated to reflect the
+  current zero-`@agora-sdk/core` reality. `STATUS.md`'s `@agora-server/contract` version references were
+  stuck at the original `^0.9.3` pin; updated to the current `^0.13.0` (`secure-chat-core`) / `^0.12.1`
+  (`social-core`). Root `TESTING.md` still documented a removed `@agora-sdk/core` vitest alias/stub and
+  the old `:4000` e2e default port (the standalone secure-chat process now defaults to `:4002`);
+  `docs/TESTING.md`'s unit-test count (`383 cases`) was stale against the current `439`. No code changed;
+  `pnpm run typecheck` stays green.
 
 ## [0.9.3] — 2026-06-28
 

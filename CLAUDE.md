@@ -65,7 +65,7 @@ transparency view, all standalone (`baseUrl` + token + `projectId` in, **no cryp
 
 ```
 packages/social/core              @agora-sdk/social-core              transport + SocialProvider + feature-gated hooks (useSocialWeather/Constellation/Neighborhood/Transparency). Pure data.
-packages/social/react-js          @agora-sdk/social-react-js          web components: CommunityWeather, Constellation (d3-force), Neighborhood, SocialTransparency. Re-exports social-core.
+packages/social/react-js          @agora-sdk/social-react-js          web components: CommunityWeather, Constellation (d3-force), Neighborhood, SocialTransparency. Re-exports social-core. (ESM-only)
 packages/social/react-native      @agora-sdk/social-react-native      bare RN components (d3-force + react-native-svg). Re-exports social-core.
 packages/social/expo              @agora-sdk/social-expo              thin re-export of social-react-native (zero platform difference).
 ```
@@ -139,9 +139,11 @@ inverts the dependency. The arrow is **SDK → contract**; see `STATUS.md` for t
 - `pnpm run build-all` — build every package in dependency order: `secure-chat-crypto` first, then the
   secure-chat group (core → react-js → react-native → expo), the social group (core → react-js →
   react-native → expo), and `auth-react-js` last. Each compiles dual ESM (`dist/esm`,
-  `tsconfig.esm.json`) + CJS (`dist/cjs`, `tsconfig.cjs.json`) — **except `secure-chat-react-js`, which
-  is ESM-only** (it depends on the ESM-only ts-mls core, so a CJS build would never load at runtime;
-  web/React consumers bundle anyway)
+  `tsconfig.esm.json`) + CJS (`dist/cjs`, `tsconfig.cjs.json`) — **except the two web packages,
+  `secure-chat-react-js` and `social-react-js`, which are ESM-only** (`secure-chat-react-js` depends on
+  the ESM-only ts-mls core; `social-react-js` follows suit to match, and its `d3-force` dependency is
+  ESM-only too — so a CJS build would never load at runtime for either; web/React consumers bundle
+  anyway)
 - `pnpm --filter @agora-sdk/secure-chat-core run build` — build one package while iterating
 - `pnpm run verify:dist` — sanity-check built `dist/` outputs (`scripts/verify-dist.mjs`)
 - `pnpm run version:patch` / `version:minor`, `publish-prod` / `publish-beta` — release across all
@@ -253,10 +255,14 @@ The SDK team's detailed Phase 2/3 checklist (with a per-file map of the scaffold
 
 - **Phase 1 — DONE (server).** Blind Delivery Service + schema + `/secure` realtime + contract +
   `SecureChatCrypto` seam + mock-tested.
-- **Phase 2 — web client (this repo's focus).** Real `SecureChatCrypto` (**ts-mls**) behind the
-  interface — **shipped** (`./ts-mls`); IndexedDB group-state persistence — **done**; handshake-pull on
-  connect + realtime catch-up — **done**. Remaining: KeyPackage replenishment tuning, passphrase
-  backup/restore (argon2id; the core's backup methods currently throw), generation-counter
-  enforcement, metadata padding. Expected **no server changes**.
+- **Phase 2 — web client — DONE (Definition of Done met).** Real `SecureChatCrypto` (**ts-mls**) behind
+  the interface, IndexedDB group-state persistence, handshake-pull on connect + realtime catch-up,
+  KeyPackage replenishment, generation-counter replay/gap enforcement (ts-mls is the enforcement point;
+  the SDK pins + classifies/surfaces it), and metadata hardening (size-bucket padding + safety numbers)
+  are all shipped. Passphrase backup/restore shipped too but is now **deprecated** (2026-06-18):
+  server-passphrase recovery is superseded by device-to-device **IUC** history restore and the local
+  `createEncryptedStore` at-rest decorator (Phase 2.5). The one remaining hardening item is the `409
+  secure-chat/epoch-conflict` rebase-on-retry for membership commits. Expected **no server changes**.
+  Full detail in [`packages/secure-chat/ROADMAP.md`](packages/secure-chat/ROADMAP.md).
 - **Phase 3 — native + full multi-device.** RN + Expo (native MLS bindings, hardware keystore);
   multiple devices/leaves per user; device-linking; cross-device history sync.

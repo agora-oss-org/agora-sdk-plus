@@ -26,35 +26,44 @@
 
 ## Phase 2 — Web client (real crypto behind the interface)
 
+> **Status: Definition of Done met.** Every item below is done; the one open Phase 2 gap — the `409`
+> epoch-conflict rebase on membership commits — is tracked in
+> [`packages/secure-chat/ROADMAP.md`](../packages/secure-chat/ROADMAP.md) §4, which is the
+> up-to-date, granular tracker (file-map + per-task checkboxes). This section is kept as the
+> original plan for context.
+
 The server DS needs **no changes**; any gap feeds back as an additive migration.
 
-- [ ] **Pick + implement a real `SecureChatCrypto`.** Decide between:
-  - **ts-mls** — pure TypeScript, same JS on web/RN/Expo, younger/less-audited
-  - **OpenMLS → WASM** — audited Rust core, but RN/Expo need a native bridge
+- [x] **Pick + implement a real `SecureChatCrypto`.** Decided: **ts-mls** (pure TypeScript, same JS
+  on web/RN/Expo) over OpenMLS→WASM, for the fastest web→native path with no native bridge.
+  Implemented as the opt-in ESM-only subpath `@agora-sdk/secure-chat-crypto/ts-mls`
+  (`createTsMlsSecureChatCrypto`); the mock stays on `./testing`.
 
-  Implement in `packages/secure-chat-crypto` behind the existing `SecureChatCrypto` interface
-  (a new opt-in subpath so the heavy core isn't pulled in by default). The mock stays on
-  `./testing` for tests in this repo and in the server's integration suite.
+- [x] **Key storage (IndexedDB).** Device identity + per-group MLS state persist via
+  `exportGroupState`/`importGroupState` (`createIndexedDBStore` in `@agora-sdk/secure-chat-react-js`).
+  Eviction (Safari ITP / "clear browsing data") is handled by `useSecureBackup`'s `needsRestore`
+  signal, which routes an evicted/fresh client to restore instead of crashing or silently re-registering.
 
-- [ ] **Key storage (IndexedDB).** Persist device identity + per-group MLS state via
-  `exportGroupState`/`importGroupState`. Handle Safari/`clear browsing data` eviction gracefully
-  (warn user before state is unrecoverable).
+- [x] **KeyPackage replenishment loop.** `useSecureDevice` publishes a batch on registration and tops
+  up on the `secure:key-packages-low` socket signal, a proactive `/key-packages/count` check on
+  device-ready, and an app-callable `checkAndReplenish()` — publishing only the deficit to the target.
 
-- [ ] **KeyPackage replenishment loop.** Publish a batch on device registration; top up on the
-  `secure:key-packages-low` socket signal and via the `/key-packages/count` polling endpoint.
+- [x] **Handshake processing.** `useSecureHandshakes` pulls `GET /devices/:id/handshakes?since=<lastSeq>`
+  on connect, then live via `secure:welcome` / `secure:handshake`; Welcomes/Commits process in `seq`
+  order with the cursor persisted, and application messages ahead of the client's epoch are buffered
+  and flushed as Commits land.
 
-- [ ] **Handshake processing.** On connect, pull `GET /devices/:id/handshakes?since=<lastSeq>`
-  then live via `secure:welcome` / `secure:handshake`; process Welcomes/Commits in `seq` order;
-  buffer application messages whose epoch the client hasn't reached yet.
+- [x] **Passphrase backup UX** — implemented (`exportBackup`/`importBackup` with a real argon2id KDF +
+  AEAD, `useSecureBackup`, `estimatePassphraseStrength`) — but now **deprecated**: recovery is
+  device-to-device via IUC, and local at-rest protection is `createEncryptedStore`. The crypto seam's
+  `PassphraseBackup`/`exportBackup`/`importBackup` carry `@deprecated` tags; no removal yet.
 
-- [ ] **Passphrase backup UX.** `exportBackup` → `PUT /key-backup` on a schedule; restore on a
-  new browser via `GET /key-backup` → `importBackup`. **Enforce a strong KDF** (argon2id,
-  conservative params) + a passphrase-strength meter — the server holds the ciphertext blob, so
-  a weak passphrase is offline-brute-forceable on DB exfil.
+- [x] **Client-side ciphertext padding** to size buckets (`core/src/util/padding.ts`), applied in
+  `useSecureMessages` and configurable via `<SecureChatProvider padding>`.
 
-- [ ] **Client-side ciphertext padding** to size buckets, to blunt traffic-shape fingerprinting.
-
-- [ ] **Safety-number / key verification UI** (out-of-band fingerprint compare) for TOFU hardening.
+- [x] **Safety-number / key verification** (out-of-band fingerprint compare) for TOFU hardening —
+  shipped as a headless primitive (`computeSafetyNumber` + `useSecureSafetyNumber`); the styled UI is
+  left to the consuming app/demo.
 
 ---
 

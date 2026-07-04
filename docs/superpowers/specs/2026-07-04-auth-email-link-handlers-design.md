@@ -17,7 +17,12 @@ not on the API. Two are landing pages the app must serve; one is a button action
 |---|---|---|
 | **Verify email** | `{origin}/auth/verify-email?projectId=…&token=…` | `POST /:pid/auth/verify-email { token }` |
 | **Reset password** | `{origin}/auth/reset-password?projectId=…&token=…` | `POST /:pid/auth/reset-password { token, newPassword }` |
-| **Resend verification** | *(no page — a "didn't get it?" button)* | `POST /:pid/auth/send-verification-email { email }` |
+| **Resend verification** | *(no page — a "didn't get it?" button)* | `POST /:pid/auth/send-verification-email { email, emailRedirectTo? }` |
+
+> **Contract note (corrected 2026-07-04):** core's `useSendVerificationEmail` posts an upstream-Replyke
+> body (`{ mode, tokenFormat, tokenLength, redirectUrl }`) and **omits `email`** — but agora-server's
+> route validates `emailSchema`, which **requires `email`**. So that core hook 400s against
+> agora-server; resend must POST directly (see §3.5), exactly like reset-password.
 
 The server side is done (`sender.ts` `confirmLink()` / `resetLink()`, routes in
 `agora-server/apps/api/src/routes/auth.ts`). The SDK ships the *transport* for two of the three
@@ -151,8 +156,11 @@ state-driven copy. It stays intentionally unstyled (semantic markup + stable `cl
 
 ### 3.5 Resend verification — `useResendVerification` + `<ResendVerificationButton>`
 
-Not a landing page — an action ("Didn't get the email? Resend"). Hook wraps the SDK's
-`useSendVerificationEmail`:
+Not a landing page — an action ("Didn't get the email? Resend"). Because core's
+`useSendVerificationEmail` omits the `email` the server requires (see the contract note in §1), the
+hook **POSTs directly** via `getApiBaseUrl()` — the same self-contained `PushTokenAdapter` pattern as
+reset-password — with `{ email, emailRedirectTo? }`, resolving `emailRedirectTo` to
+`window.location.origin` on web (matching the server's own resolution order):
 
 ```ts
 type ResendStatus = "idle" | "sending" | "sent" | "error";
@@ -184,8 +192,8 @@ From `agora-server/packages/contract/src/schemas.ts` + `routes/auth.ts`:
 - **reset-password** — `POST /:projectId/auth/reset-password`, body `{ token, newPassword }`,
   `newPassword` 8..128. Success `{ success: true }`. Errors carry `{ error, code }`.
 - **send-verification-email** — `POST /:projectId/auth/send-verification-email`, body
-  `{ email, emailRedirectTo? }`. Handled entirely by core's `useSendVerificationEmail`; we don't
-  touch the wire for resend.
+  `{ email, emailRedirectTo? }`, `email` **required** (`emailSchema`). We POST this directly (core's
+  `useSendVerificationEmail` omits `email` and would 400 — see §1 contract note).
 
 ## 5. Error handling
 

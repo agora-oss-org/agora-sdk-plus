@@ -8,8 +8,15 @@ agora-sdk-plus (see [`CHANGELOG.md`](CHANGELOG.md) → _Fixed_, and `scripts/ver
 `@agora-sdk/{react-js,react-native,expo}`, which share the build setup).
 
 **Impact:** `@agora-sdk/core` cannot be loaded by **either** an ESM or a CommonJS consumer. Every app
-and every downstream SDK (including this repo's `secure-chat-core`, which depends on it) breaks at
-runtime the moment it imports `@agora-sdk/core`.
+and every downstream SDK that imports it breaks at runtime the moment it does so.
+
+*(Historical note: this write-up originally flagged `secure-chat-core` as an affected downstream —
+it used to fall back to `@agora-sdk/core`'s `getApiBaseUrl`/`getSocketUrl` runtime singletons. That
+coupling was dropped — `secure-chat-core` and `social-core` are now standalone and take `baseUrl`
+directly, with zero `@agora-sdk/core` dependency (see `CHANGELOG.md`) — so they're unaffected by this
+bug today. The remaining consumer in this repo is `@agora-sdk/auth-react-js`, which peer-depends on
+`@agora-sdk/react-js` and would be exposed to the same defect class if it exists in that sibling
+package.)*
 
 ---
 
@@ -134,6 +141,8 @@ agora-sdk repo and run it after `build` in CI/publish, so this can never regress
   `@agora-sdk/expo`** — they share this build setup and almost certainly the same defects.
 - This is the identical bug class fixed in this repo; the working reference is the commit that adds
   `.js` extensions, the `build:cjs` CJS marker, and `scripts/verify-dist.mjs`.
-- Until `@agora-sdk/core` is republished fixed, `@agora-sdk/secure-chat-core` and the platform
-  packages here build and typecheck correctly but **cannot be loaded at runtime** (the dependency-free
-  `@agora-sdk/secure-chat-crypto` is unaffected and fully working).
+- `@agora-sdk/secure-chat-core`, `@agora-sdk/social-core`, and their platform packages no longer depend
+  on `@agora-sdk/core` (the `baseUrl`-required refactor removed the `getApiBaseUrl`/`getSocketUrl`
+  fallback — see `CHANGELOG.md`), so they build, typecheck, **and load at runtime** regardless of this
+  bug. `@agora-sdk/auth-react-js` is the one package here that still peer-depends on `@agora-sdk/react-js`
+  (and transitively on this bug being fixed, if the same defects apply to that sibling package).
