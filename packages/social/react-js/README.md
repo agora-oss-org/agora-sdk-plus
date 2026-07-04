@@ -17,7 +17,7 @@ pnpm add @agora-sdk/social-react-js
 import { SocialProvider } from "@agora-sdk/social-core";
 import { CommunityWeather, Constellation, Neighborhood } from "@agora-sdk/social-react-js";
 
-<SocialProvider projectId={projectId} accessToken={accessToken}>
+<SocialProvider projectId={projectId} accessToken={accessToken} baseUrl="https://your-api.example.com/v7">
   <CommunityWeather />
   <Constellation />
   <Neighborhood showInteractionsToggle />

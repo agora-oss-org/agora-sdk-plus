@@ -92,7 +92,7 @@ export interface SocialProviderProps {
  *
  * @example
  * ```tsx
- * <SocialProvider projectId={projectId} accessToken={token}>
+ * <SocialProvider projectId={projectId} accessToken={token} baseUrl="https://your-api.example.com/v7">
  *   <CommunityWeather />
  *   <Constellation />
  * </SocialProvider>

@@ -37,7 +37,7 @@ const BAND_CAPTION: Record<string, string> = {
  *
  * @example
  * ```tsx
- * <SocialProvider projectId={id} accessToken={token}>
+ * <SocialProvider projectId={id} accessToken={token} baseUrl="https://your-api.example.com/v7">
  *   <CommunityWeather />
  * </SocialProvider>
  * ```
