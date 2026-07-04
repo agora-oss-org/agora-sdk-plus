@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, renderHook, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, renderHook, screen, waitFor } from "@testing-library/react";
 
 vi.mock("@agora-sdk/react-js", () => ({
   useProject: vi.fn(),
@@ -31,7 +31,10 @@ beforeEach(() => {
   setUrl("?projectId=p1&token=tok123");
   vi.spyOn(window.history, "replaceState").mockImplementation(() => {});
 });
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
 describe("useEmailVerification", () => {
   it("calls verifyEmail with the URL token and reaches success", async () => {
