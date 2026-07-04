@@ -7,7 +7,12 @@ import { useSignOutAll } from "@agora-sdk/react-js";
 
 /** Return value of {@link useSignOutEverywhere}. */
 export type UseSignOutEverywhereReturn = {
-  /** End the session on every stored account and clear the map. Rejects if the server revoke fails (local state is still cleared by the SDK). */
+  /**
+   * End the session on every stored account and clear the map. The SDK's `signOutAll` treats each
+   * account's server-side revoke as best-effort — a failed revoke is logged, not thrown — so local
+   * state is cleared even when the server call fails. This only rejects on an unexpected failure
+   * (e.g. no active project, or the underlying dispatch itself throwing).
+   */
   signOutEverywhere: () => Promise<void>;
   /** True while the sign-out is in flight. */
   isPending: boolean;
