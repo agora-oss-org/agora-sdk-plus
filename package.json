@@ -1,6 +1,6 @@
 {
   "name": "agora-sdk-plus",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "license": "Apache-2.0",
   "author": "Agora SDK Plus, maintained by Jenova Marie",
   "description": "Additive, Agora-only SDK features that build on @agora-sdk/* — starting with end-to-end-encrypted secure chat (MLS / RFC 9420).",
@@ -39,6 +39,11 @@
     "version:minor": "pnpm --filter @agora-sdk/secure-chat-crypto --filter @agora-sdk/secure-chat-core --filter @agora-sdk/secure-chat-react-js --filter @agora-sdk/secure-chat-react-native --filter @agora-sdk/secure-chat-expo --filter @agora-sdk/social-core --filter @agora-sdk/social-react-js --filter @agora-sdk/social-react-native --filter @agora-sdk/social-expo --filter @agora-sdk/auth-react-js exec npm version minor --no-git-tag-version && node scripts/write-version.mjs",
     "publish-prod": "pnpm --filter @agora-sdk/secure-chat-crypto --filter @agora-sdk/secure-chat-core --filter @agora-sdk/secure-chat-react-js --filter @agora-sdk/secure-chat-react-native --filter @agora-sdk/secure-chat-expo --filter @agora-sdk/social-core --filter @agora-sdk/social-react-js --filter @agora-sdk/social-react-native --filter @agora-sdk/social-expo --filter @agora-sdk/auth-react-js publish",
     "publish-beta": "pnpm --filter @agora-sdk/secure-chat-crypto --filter @agora-sdk/secure-chat-core --filter @agora-sdk/secure-chat-react-js --filter @agora-sdk/secure-chat-react-native --filter @agora-sdk/secure-chat-expo --filter @agora-sdk/social-core --filter @agora-sdk/social-react-js --filter @agora-sdk/social-react-native --filter @agora-sdk/social-expo --filter @agora-sdk/auth-react-js publish --tag beta"
+  },
+  "pnpm": {
+    "overrides": {
+      "@agora-sdk/react-js": "link:../agora-sdk/packages/react-js"
+    }
   },
   "devDependencies": {
     "@testing-library/react": "^14.3.1",

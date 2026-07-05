@@ -1,9 +1,11 @@
 // Resend-confirmation action ("Didn't get the email?"). Not a landing page. We POST directly via the
 // SDK's public getApiBaseUrl() with { email, emailRedirectTo } — core's useSendVerificationEmail omits
-// the `email` the server's emailSchema requires, so wrapping it would 400. emailRedirectTo defaults to
-// this origin so the confirmation link returns here (matching the server's own resolution order).
+// the `email` the server's emailSchema requires, so wrapping it would 400. emailRedirectTo comes from
+// getEmailRedirectTo() (same resolution chain sign-up / password-reset-request use: an env-var-style
+// override, then window.location.origin) — @agora-sdk/core >=1.7.0 required, since this export didn't
+// exist before.
 import { useState } from "react";
-import { useProject, getApiBaseUrl } from "@agora-sdk/react-js";
+import { useProject, getApiBaseUrl, getEmailRedirectTo } from "@agora-sdk/react-js";
 
 /** Lifecycle of a resend action. */
 export type ResendStatus = "idle" | "sending" | "sent" | "error";
@@ -45,7 +47,7 @@ export function useResendVerification(): UseResendVerificationReturn {
     }
     setStatus("sending");
     setError(null);
-    const emailRedirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
+    const emailRedirectTo = getEmailRedirectTo();
     try {
       const res = await fetch(`${getApiBaseUrl()}/${projectId}/auth/send-verification-email`, {
         method: "POST",

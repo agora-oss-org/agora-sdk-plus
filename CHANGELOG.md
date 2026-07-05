@@ -6,6 +6,20 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+## [0.10.2] — 2026-07-04
+
+### Fixed
+
+- **`@agora-sdk/auth-react-js` — `useResendVerification` ignored the app's configured
+  `emailRedirectTo` origin.** It hardcoded `window.location.origin` inline instead of calling
+  `getEmailRedirectTo()` (the same env-var-then-origin resolution chain sign-up and
+  password-reset-request already use internally in `@agora-sdk/core`), so a deployment overriding
+  that origin (e.g. a path-prefixed mount) got the "Didn't get the email?" resend link right but the
+  original confirmation and reset-request links wrong — three call sites, two different sources of
+  truth. `getEmailRedirectTo` is now a public `@agora-sdk/core` export (see `agora-sdk` v1.7.0) so
+  `useResendVerification` can call the same function instead of re-deriving the origin itself.
+  **Requires `@agora-sdk/react-js` >=1.7.0** — bumped the peer/dev dependency floor accordingly.
+
 ## [0.10.1] — 2026-07-04
 
 ### Fixed

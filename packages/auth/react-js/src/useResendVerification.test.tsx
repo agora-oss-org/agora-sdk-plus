@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@t
 vi.mock("@agora-sdk/react-js", () => ({
   useProject: vi.fn(),
   getApiBaseUrl: vi.fn(() => "https://api.test/v7"),
+  getEmailRedirectTo: vi.fn(() => "https://app.test"),
 }));
 
 import { useProject } from "@agora-sdk/react-js";
@@ -15,7 +16,6 @@ const mockProject = useProject as unknown as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   mockProject.mockReturnValue({ projectId: "p1" });
-  Object.defineProperty(window, "location", { value: { origin: "https://app.test" }, writable: true });
   global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) }) as unknown as typeof fetch;
 });
 afterEach(() => {
