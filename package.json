@@ -40,11 +40,6 @@
     "publish-prod": "pnpm --filter @agora-sdk/secure-chat-crypto --filter @agora-sdk/secure-chat-core --filter @agora-sdk/secure-chat-react-js --filter @agora-sdk/secure-chat-react-native --filter @agora-sdk/secure-chat-expo --filter @agora-sdk/social-core --filter @agora-sdk/social-react-js --filter @agora-sdk/social-react-native --filter @agora-sdk/social-expo --filter @agora-sdk/auth-react-js publish",
     "publish-beta": "pnpm --filter @agora-sdk/secure-chat-crypto --filter @agora-sdk/secure-chat-core --filter @agora-sdk/secure-chat-react-js --filter @agora-sdk/secure-chat-react-native --filter @agora-sdk/secure-chat-expo --filter @agora-sdk/social-core --filter @agora-sdk/social-react-js --filter @agora-sdk/social-react-native --filter @agora-sdk/social-expo --filter @agora-sdk/auth-react-js publish --tag beta"
   },
-  "pnpm": {
-    "overrides": {
-      "@agora-sdk/react-js": "link:../agora-sdk/packages/react-js"
-    }
-  },
   "devDependencies": {
     "@testing-library/react": "^14.3.1",
     "cbor2": "^2.0.1",

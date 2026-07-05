@@ -8,6 +8,16 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Fixed
 
+- **CI/Publish — typecheck failed with `Cannot find module '@agora-sdk/react-js'`.** A committed
+  `pnpm.overrides` in the root `package.json` pinned `@agora-sdk/react-js` to a local sibling checkout
+  (`link:../agora-sdk/packages/react-js`). That path exists locally but not on the CI runner (which
+  checks out only this repo), so `pnpm install --frozen-lockfile` couldn't materialize it and `tsc`
+  failed across every `auth-react-js` file. Removed the override so the workspace resolves the published
+  `@agora-sdk/react-js@^1.7.0` from npm (which has the `getEmailRedirectTo` export `useResendVerification`
+  needs), and regenerated the lockfile. Local development against the sibling fork is now an **opt-in**
+  via a new `.pnpmfile.cjs` — `AGORA_SDK_LINK=1 pnpm install` links to `../agora-sdk/packages/react-js`
+  when present; the default (and CI) stays on the npm release, so the committed lockfile is stable.
+
 - **Build tooling — phantom `dist/cjs` workspace packages polluted `pnpm-lock.yaml`.** The workspace
   glob `packages/**/*` also matched each package's built `dist/cjs/` (whose `build:cjs` step writes a
   marker `package.json`, `{"type":"commonjs"}`), so pnpm registered `packages/<pkg>/dist/cjs` as phantom
