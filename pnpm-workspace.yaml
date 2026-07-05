@@ -1,2 +1,7 @@
 packages:
   - "packages/**/*"
+  # Exclude built output: `build:cjs` writes a marker `dist/cjs/package.json` (`{"type":"commonjs"}`),
+  # and the greedy `packages/**/*` glob would otherwise register each built `dist/cjs` as a phantom
+  # workspace package (spurious `packages/<pkg>/dist/cjs: {}` importers in pnpm-lock.yaml that appear or
+  # vanish depending on what's been built at install time). Ignoring `dist` keeps the lockfile stable.
+  - "!**/dist/**"

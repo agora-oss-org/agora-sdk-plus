@@ -6,6 +6,16 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Fixed
+
+- **Build tooling — phantom `dist/cjs` workspace packages polluted `pnpm-lock.yaml`.** The workspace
+  glob `packages/**/*` also matched each package's built `dist/cjs/` (whose `build:cjs` step writes a
+  marker `package.json`, `{"type":"commonjs"}`), so pnpm registered `packages/<pkg>/dist/cjs` as phantom
+  workspace importers. These entries appeared or vanished depending on which packages had been built at
+  install time, churning the committed lockfile non-deterministically (8 stray importers). Added a
+  `- "!**/dist/**"` exclusion to `pnpm-workspace.yaml` and regenerated a clean lockfile. No dependency
+  or runtime change.
+
 ## [0.10.2] — 2026-07-04
 
 ### Fixed

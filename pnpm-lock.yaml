@@ -72,8 +72,6 @@ importers:
         specifier: ^18.0.0 || ^19.0.0
         version: 18.3.1(react@18.3.1)
 
-  packages/auth/react-js/dist/cjs: {}
-
   packages/secure-chat/core:
     dependencies:
       '@agora-sdk/secure-chat-crypto':
@@ -98,8 +96,6 @@ importers:
         specifier: ^4.8.1
         version: 4.8.3
 
-  packages/secure-chat/core/dist/cjs: {}
-
   packages/secure-chat/crypto:
     dependencies:
       '@noble/ciphers':
@@ -115,8 +111,6 @@ importers:
         specifier: 1.6.2
         version: 1.6.2(@noble/ciphers@2.1.1)(@noble/curves@2.0.1)
 
-  packages/secure-chat/crypto/dist/cjs: {}
-
   packages/secure-chat/expo:
     dependencies:
       '@agora-sdk/secure-chat-core':
@@ -131,8 +125,6 @@ importers:
       react-native:
         specifier: '>=0.72.0'
         version: 0.79.7(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1)
-
-  packages/secure-chat/expo/dist/cjs: {}
 
   packages/secure-chat/react-js:
     dependencies:
@@ -174,8 +166,6 @@ importers:
         specifier: '>=0.72.0'
         version: 0.79.7(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1)
 
-  packages/secure-chat/react-native/dist/cjs: {}
-
   packages/social/core:
     dependencies:
       '@agora-server/contract':
@@ -187,8 +177,6 @@ importers:
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 18.3.1
-
-  packages/social/core/dist/cjs: {}
 
   packages/social/expo:
     dependencies:
@@ -210,8 +198,6 @@ importers:
       react-native-svg:
         specifier: '>=13.0.0'
         version: 15.15.5(react-native@0.79.7(@babel/core@7.29.7)(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)
-
-  packages/social/expo/dist/cjs: {}
 
   packages/social/react-js:
     dependencies:
@@ -259,8 +245,6 @@ importers:
       '@types/d3-force':
         specifier: ^3.0.10
         version: 3.0.10
-
-  packages/social/react-native/dist/cjs: {}
 
 packages:
 
