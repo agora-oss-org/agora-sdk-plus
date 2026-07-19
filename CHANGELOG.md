@@ -86,6 +86,15 @@ All notable changes to Agora SDK Plus are documented here, following
   the seeded anchor by `foreignId` rather than hardcoding a uuid, since the uuid is per-install.
   Skipped unless `AGORA_E2E_PUBLIC_PROJECT_ID` is set, so `pnpm test` and CI stay server-free.
 
+- **Testing docs + `.env.example` cover the public-read e2e and a jsdom cleanup trap.** Both
+  `TESTING.md` and `docs/TESTING.md` now document the second, independently-gated e2e suite
+  (`AGORA_E2E_PUBLIC_PROJECT_ID`), add `@agora-sdk/public-read-core` to the vitest alias table, and
+  record a real trap: the root config does not enable vitest `globals`, so `@testing-library/react`
+  never registers its automatic `afterEach(cleanup)` — renders accumulate in `document.body` and
+  later queries match earlier tests' elements, surfacing as a confusing "Found multiple elements"
+  error. Existing suites avoid it only because their fixtures differ per test. Also corrects
+  `docs/TESTING.md`'s stale unit-test count (`439 cases across 54 files` → `530 across 65`).
+
 ### Fixed
 
 - **`verify:dist` only ever checked `packages/secure-chat` — and was hiding a broken `auth-react-js`

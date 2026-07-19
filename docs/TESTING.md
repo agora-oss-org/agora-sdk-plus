@@ -26,7 +26,7 @@ There's also a non-test **diagnostic** (`pnpm chat-diag`) and a packaging **guar
 
 ```bash
 pnpm install
-pnpm test            # unit suite — fully mocked, no server. 439 cases across 54 files
+pnpm test            # unit suite — fully mocked, no server. 530 cases across 65 files
 pnpm test:watch      # vitest watch mode while iterating
 pnpm typecheck       # tsc --noEmit at the root (not a test, but part of "green")
 
@@ -66,10 +66,12 @@ without first building `dist/`:
 | `@agora-sdk/secure-chat-crypto/ts-mls` | `…/crypto/src/ts-mls/index.ts` (real MLS core) |
 | `@agora-sdk/secure-chat-core` | `packages/secure-chat/core/src/index.ts` |
 | `@agora-sdk/social-core` | `packages/social/core/src/index.ts` |
+| `@agora-sdk/public-read-core` | `packages/public-read/core/src/index.ts` |
 
 The more-specific subpath aliases are listed first so they win over the bare entry. There is **no
-`@agora-sdk/core` alias** — neither secure-chat nor social depends on it (they take `baseUrl`
-directly), so there's nothing to stub. (`auth-react-js`, the one SDK-coupled feature, mocks
+`@agora-sdk/core` alias** — secure-chat, social, and public-read don't depend on it (they take
+`baseUrl` directly), so there's nothing to stub. `public-read` goes furthest: it takes no token at
+all, so its tests never mint or mock one. (`auth-react-js`, the one SDK-coupled feature, mocks
 `@agora-sdk/react-js`'s hooks at the test boundary.)
 
 ### React tests → jsdom, per file
@@ -81,8 +83,23 @@ under `node` like everything else:
 // @vitest-environment jsdom
 ```
 
-These use `@testing-library/react` (+ `react`/`react-dom`, all `devDependencies`). ~26 test files do
-this today (the `social-react-js`, `secure-chat-react-js`, and `auth-react-js` component/hook suites).
+These use `@testing-library/react` (+ `react`/`react-dom`, all `devDependencies`). ~28 test files do
+this today (the `social-react-js`, `secure-chat-react-js`, `public-read-react-js`, and `auth-react-js`
+component/hook suites).
+
+> ⚠️ **Call `cleanup()` yourself in component tests.** The root config does **not** enable vitest
+> `globals`, so `@testing-library/react` never registers its automatic `afterEach(cleanup)`. Without
+> one, every `render()` stays mounted in `document.body` and later queries match elements left behind
+> by earlier tests — which surfaces as a confusing *"Found multiple elements with the text…"* rather
+> than an obvious leak. Suites that render the same fixture text more than once **must** do:
+>
+> ```ts
+> import { cleanup } from "@testing-library/react";
+> afterEach(cleanup);
+> ```
+>
+> `renderHook`-only suites are unaffected. Existing suites that skip it do so only because their
+> fixtures happen to differ per test — don't rely on that.
 
 ### The WebCrypto realm shim 🔐
 
@@ -112,7 +129,23 @@ secrets, private keys, `privateState`, or backup passphrases — even in test ou
 
 ## Layer 3 — e2e (opt-in, real server) 🌐
 
-Driven by [`vitest.e2e.config.ts`](../vitest.e2e.config.ts). This is the **foundation validation**: the
+Driven by [`vitest.e2e.config.ts`](../vitest.e2e.config.ts). **Two independent suites live here**, each
+gated on its own env var so either can run alone:
+
+| Suite | Gate | Proves |
+|---|---|---|
+| [`e2e/secure-chat.e2e.ts`](../e2e/secure-chat.e2e.ts) | `AGORA_E2E_DATABASE_URL` | the full blind-DS loop (below) |
+| [`e2e/public-read.e2e.ts`](../e2e/public-read.e2e.ts) | `AGORA_E2E_PUBLIC_PROJECT_ID` | the anonymous `/public/*` surface |
+
+The **public-read** suite covers what a mocked transport structurally cannot: real CORS headers
+(wildcard ACAO, no credentials, no `Vary: Origin`), the `ETag` → `304` revalidation round trip,
+`no-store` on the gate's `404`, live PII redaction, and that the walled surface still `401`s the same
+entity. It needs no DB access or minted JWT — only a running server and a seeded fixture
+(`pnpm seed` from `agora-server/apps/api`, which publishes an anchor with
+`foreignId: "homepage-comments"`). It resolves that anchor **by `foreignId`**, never a hardcoded uuid,
+because the uuid is generated per install.
+
+The **secure-chat** suite is the **foundation validation**: the
 SDK's **real** transport clients talking to a **locally running agora-server** (the blind Delivery
 Service), proving the full loop — register → publish KeyPackages → start a DM → deliver the Welcome →
 send → list/decrypt → live socket fan-out → restore-on-new-browser → catch-up-from-cursor.
@@ -145,6 +178,8 @@ What makes it different from the unit config:
 | `AGORA_E2E_ACCESS_TOKEN_SECRET` | **yes** | The server's `ACCESS_TOKEN_SECRET`. Our minted JWTs must verify under it. (Set the DB var but not this one ⇒ **fail fast**, by design.) |
 | `AGORA_E2E_BASE_URL` | no | REST base incl. `/v7`. Default `http://localhost:4002/v7`. |
 | `AGORA_E2E_SOCKET_URL` | no | Socket.io origin (client appends the namespace). Default `http://localhost:4002`. |
+| `AGORA_E2E_PUBLIC_PROJECT_ID` | **yes — the public-read gate** | Project id holding the seeded public anchor. Unset ⇒ that suite skipped (independent of the secure-chat gate). |
+| `AGORA_E2E_PUBLIC_FOREIGN_ID` | no | The anchor's key. Default `homepage-comments`. |
 
 Match `AGORA_E2E_ACCESS_TOKEN_SECRET` and `AGORA_E2E_DATABASE_URL` to the **running server's `.env`**,
 or tokens won't verify / rows land in the wrong DB.

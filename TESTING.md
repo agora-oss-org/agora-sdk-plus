@@ -15,7 +15,7 @@ can tell *which* layer it lives in instead of guessing.
 |---|---|---|---|---|---|---|
 | **1. Unit suite** | `pnpm test` | no (mocked) | `MockSecureChatCrypto` | per-file (jsdom) | 1 | Logic of every unit in isolation: transport shaping, hooks, persistence, padding, safety numbers. |
 | **2. Two-client hook composition** | `pnpm test` (unit files) | no (in-memory fake DS) | mock, real ts-mls, **and** the real web runtime | yes — real `useSecure*` (incl. StrictMode + IndexedDB) | 1 | The **hook orchestration**: two peers through the real provider+hooks against one shared fake server — mock crypto for speed, a ts-mls capstone for fidelity, and a browser-runtime case (StrictMode + IndexedDB + ts-mls). |
-| **3. Foundation e2e** | `pnpm test:e2e` | **yes** (live agora-server) | mock **and** real ts-mls | no | 1 (two crypto instances) | The stack **below React** against a real server: transport, wire contract, ts-mls, server blindness, handshake inbox, reload/cursor catch-up. |
+| **3. Foundation e2e** | `pnpm test:e2e` | **yes** (live agora-server) | mock **and** real ts-mls | no | 1 (two crypto instances) | The stack **below React** against a real server. Two independently-gated suites: **secure-chat** (transport, wire contract, ts-mls, server blindness, handshake inbox, reload/cursor catch-up) and **public-read** (real CORS headers, `ETag`→`304`, `no-store` on 404, live PII redaction — none of which a mocked transport can prove). |
 | **4. chat-diag** | `pnpm chat-diag -- --role …` | **yes** (live agora-server) | real ts-mls | no | **2 OS processes** | The same round-trip across a real process boundary, exercising the **device export/import "reload" seam**. |
 
 Layers 1–2 run on every `pnpm test` and in CI (fully mocked, server-free). Layers 3–4 are **opt-in**
@@ -38,8 +38,8 @@ either.
 - **Aliases (so tests run against source, no build needed):**
   - `@agora-sdk/secure-chat-crypto` and `…/testing` → the in-repo crypto package source, so tests
     `import { MockSecureChatCrypto } from "@agora-sdk/secure-chat-crypto/testing"` directly.
-  - `@agora-sdk/secure-chat-core` and `@agora-sdk/social-core` → their source.
-  - **No `@agora-sdk/core` alias.** Neither secure-chat nor social depends on `@agora-sdk/core` any
+  - `@agora-sdk/secure-chat-core`, `@agora-sdk/social-core`, and `@agora-sdk/public-read-core` → their source.
+  - **No `@agora-sdk/core` alias.** Neither secure-chat, social, nor public-read depends on `@agora-sdk/core` any
     more — they take `baseUrl` directly (see `CHANGELOG.md`) — so there is nothing to stub. The former
     `test-support/agora-sdk-core-stub.ts` was removed along with the alias.
 
@@ -59,6 +59,22 @@ Run:
 pnpm test         # one-shot
 pnpm test:watch   # watch mode
 ```
+
+### Calling `cleanup()` in component tests
+
+The root config does **not** enable vitest `globals`, so `@testing-library/react` never registers its
+automatic `afterEach(cleanup)`. Without one, every `render()` stays mounted in `document.body` and
+later queries match elements left behind by earlier tests — surfacing as a confusing *"Found multiple
+elements with the text…"* rather than an obvious leak. Any suite that renders the same fixture text
+more than once must do:
+
+```ts
+import { cleanup } from "@testing-library/react";
+afterEach(cleanup);
+```
+
+`renderHook`-only suites are unaffected. Suites that omit it today do so only because their fixtures
+differ per test — that is luck, not a guarantee.
 
 ### Quieting an expected render-time throw
 
@@ -142,8 +158,22 @@ It comes in two files:
 
 ## Layer 3 — Foundation e2e (`pnpm test:e2e`)
 
-File: [`e2e/secure-chat.e2e.ts`](e2e/secure-chat.e2e.ts), config
-[`vitest.e2e.config.ts`](vitest.e2e.config.ts), fixtures [`e2e/bootstrap.ts`](e2e/bootstrap.ts).
+Config [`vitest.e2e.config.ts`](vitest.e2e.config.ts). **Two independent suites**, each gated on its
+own env var so either can run alone:
+
+| Suite | Gate | Proves |
+|---|---|---|
+| [`e2e/secure-chat.e2e.ts`](e2e/secure-chat.e2e.ts) | `AGORA_E2E_DATABASE_URL` | the full blind-DS loop (below) |
+| [`e2e/public-read.e2e.ts`](e2e/public-read.e2e.ts) | `AGORA_E2E_PUBLIC_PROJECT_ID` | the anonymous `/public/*` surface |
+
+**public-read** covers what a mocked transport structurally cannot: real CORS headers (wildcard ACAO,
+no credentials, no `Vary: Origin`), the `ETag` → `304` revalidation round trip, `no-store` on the
+gate's `404`, live PII redaction, and that the walled surface still `401`s the same entity. It needs
+no DB access and no minted JWT — only a running server on `:4000` and a seeded fixture (`pnpm seed`
+from `agora-server/apps/api`). It resolves the anchor **by `foreignId`**, never a hardcoded uuid,
+since the uuid is generated per install.
+
+**secure-chat** (the rest of this section) — fixtures [`e2e/bootstrap.ts`](e2e/bootstrap.ts).
 
 The SDK's **real** transport clients talking to a **locally running agora-server**, proving the wire
 contract end to end: register → publish/claim KeyPackages → start DM → recipient joins via the
@@ -239,7 +269,7 @@ not reproducible at the SDK boundary because the SDK takes those as caller-owned
 
 ## Environment
 
-Layers 3–4 need two env vars (the other two are optional). Copy [`.env.example`](.env.example) to
+Layers 3–4 need two env vars for the secure-chat suite (the rest are optional); the public-read suite has its own independent gate. Copy [`.env.example`](.env.example) to
 `.env` (gitignored; a repo `.envrc` containing `dotenv` auto-loads it via direnv):
 
 | Var | Required | Meaning |
@@ -248,6 +278,9 @@ Layers 3–4 need two env vars (the other two are optional). Copy [`.env.example
 | `AGORA_E2E_ACCESS_TOKEN_SECRET` | **yes** | The running server's `ACCESS_TOKEN_SECRET`; minted tokens must verify under it. |
 | `AGORA_E2E_BASE_URL` | no (default `http://localhost:4002/v7`) | REST base incl. the `/v7` prefix — the standalone secure-chat process, not the main API on `:4000`. |
 | `AGORA_E2E_SOCKET_URL` | no (default `http://localhost:4002`) | Socket.io origin (the client appends `/secure`). |
+| `AGORA_E2E_PUBLIC_PROJECT_ID` | **yes — the public-read gate** | Project id holding the seeded public anchor. Unset ⇒ only that suite skips; the secure-chat gate is independent. |
+| `AGORA_E2E_PUBLIC_FOREIGN_ID` | no (default `homepage-comments`) | The seeded anchor's key. |
+| `AGORA_E2E_BASE_URL` (public-read) | no (default `http://localhost:4000/v7`) | The public-read suite talks to the **main API**, not the `:4002` secure-chat process. |
 
 If `AGORA_E2E_DATABASE_URL` is set but `AGORA_E2E_ACCESS_TOKEN_SECRET` is missing, `bootstrap.ts` fails
 fast with a clear message rather than deep inside an auth check.
