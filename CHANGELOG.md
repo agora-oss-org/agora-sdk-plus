@@ -73,6 +73,15 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ### Fixed
 
+- **`verify:dist` only ever checked `packages/secure-chat` — and was hiding a broken `auth-react-js`
+  build.** The script hardcoded that one feature group's directory, so `social`, `auth`, and now
+  `public-read` were never linted for extensionless ESM specifiers or a missing CJS type marker,
+  despite CI running it on every push. Generalized to scan all `packages/<feature>/<platform>` dirs.
+  It immediately caught 22 extensionless relative imports in `@agora-sdk/auth-react-js`: `tsc` never
+  rewrites specifiers, so a source `from "./x"` emits `from "./x"`, which **Node's ESM resolver
+  cannot load**. Bundlers tolerate it, which is why it shipped unnoticed. Added the `.js` extensions
+  across that package's sources.
+
 - **CI/Publish — typecheck failed with `Cannot find module '@agora-sdk/react-js'`.** A committed
   `pnpm.overrides` in the root `package.json` pinned `@agora-sdk/react-js` to a local sibling checkout
   (`link:../agora-sdk/packages/react-js`). That path exists locally but not on the CI runner (which

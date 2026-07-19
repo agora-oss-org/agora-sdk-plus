@@ -3,8 +3,8 @@
 // classNames for the app's CSS, plus a renderForm escape hatch for a fully custom UI.
 import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { usePasswordReset } from "./usePasswordReset";
-import type { UsePasswordResetReturn } from "./usePasswordReset";
+import { usePasswordReset } from "./usePasswordReset.js";
+import type { UsePasswordResetReturn } from "./usePasswordReset.js";
 
 /** Props for {@link PasswordResetHandler}. */
 export type PasswordResetHandlerProps = {

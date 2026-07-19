@@ -6,9 +6,9 @@ vi.mock("@agora-sdk/react-js", () => ({ useProject: vi.fn() }));
 vi.mock("./useAuthStatus", () => ({ useAuthStatus: vi.fn() }));
 
 import { useProject } from "@agora-sdk/react-js";
-import { useAuthStatus } from "./useAuthStatus";
-import { useAuthSelfHeal } from "./useAuthSelfHeal";
-import { readAccountMap } from "./accountStorage";
+import { useAuthStatus } from "./useAuthStatus.js";
+import { useAuthSelfHeal } from "./useAuthSelfHeal.js";
+import { readAccountMap } from "./accountStorage.js";
 
 const mockProject = useProject as unknown as ReturnType<typeof vi.fn>;
 const mockStatus = useAuthStatus as unknown as ReturnType<typeof vi.fn>;

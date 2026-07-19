@@ -8,8 +8,8 @@ vi.mock("@agora-sdk/react-js", () => ({
 }));
 
 import { useProject } from "@agora-sdk/react-js";
-import { usePasswordReset } from "./usePasswordReset";
-import { PasswordResetHandler } from "./PasswordResetHandler";
+import { usePasswordReset } from "./usePasswordReset.js";
+import { PasswordResetHandler } from "./PasswordResetHandler.js";
 
 const mockProject = useProject as unknown as ReturnType<typeof vi.fn>;
 let replace: ReturnType<typeof vi.fn>;

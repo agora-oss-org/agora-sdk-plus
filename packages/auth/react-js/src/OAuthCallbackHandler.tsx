@@ -2,7 +2,7 @@
 // who don't want to wire status themselves render this and pass onSuccess/onError/redirectTo.
 import { useEffect } from "react";
 import type { ReactNode } from "react";
-import { useOAuthCallback } from "./useOAuthCallback";
+import { useOAuthCallback } from "./useOAuthCallback.js";
 
 /** Props for {@link OAuthCallbackHandler}. */
 export type OAuthCallbackHandlerProps = {

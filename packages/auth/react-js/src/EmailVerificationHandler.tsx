@@ -2,7 +2,7 @@
 // pending/success/error slots (with plain defaults) and fires onSuccess/onError.
 import { useEffect } from "react";
 import type { ReactNode } from "react";
-import { useEmailVerification } from "./useEmailVerification";
+import { useEmailVerification } from "./useEmailVerification.js";
 
 /** Props for {@link EmailVerificationHandler}. */
 export type EmailVerificationHandlerProps = {

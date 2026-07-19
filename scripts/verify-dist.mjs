@@ -24,7 +24,23 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { join } from "node:path";
 
 const require = createRequire(import.meta.url);
-const pkgsDir = fileURLToPath(new URL("../packages/secure-chat", import.meta.url));
+const packagesRoot = fileURLToPath(new URL("../packages", import.meta.url));
+
+// Feature groups are `packages/<feature>/<platform>`, so scan two levels rather than one. This used
+// to hardcode `packages/secure-chat`, which silently skipped every other group — social's dist was
+// never verified despite this script running in CI on every push.
+function packageDirs() {
+  const out = [];
+  for (const feature of readdirSync(packagesRoot)) {
+    const featureDir = join(packagesRoot, feature);
+    if (!statSync(featureDir).isDirectory()) continue;
+    for (const platform of readdirSync(featureDir)) {
+      const dir = join(featureDir, platform);
+      if (statSync(dir).isDirectory() && existsSync(join(dir, "package.json"))) out.push(dir);
+    }
+  }
+  return out;
+}
 
 // `from "…"`, `import("…")`, bare `import "…"`, and `require("…")` — capturing only relative targets.
 const SPECIFIER = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["'](\.[^"']*)["']/g;
@@ -43,11 +59,8 @@ function jsFiles(dir) {
 
 const problems = [];
 
-for (const dir of readdirSync(pkgsDir)) {
-  const base = join(pkgsDir, dir);
-  const pkgPath = join(base, "package.json");
-  if (!existsSync(pkgPath)) continue;
-  const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+for (const base of packageDirs()) {
+  const pkg = JSON.parse(readFileSync(join(base, "package.json"), "utf8"));
   if (pkg.private) continue;
 
   // 1. ESM specifiers must carry an extension.
@@ -83,8 +96,8 @@ for (const dir of readdirSync(pkgsDir)) {
 }
 
 // 3. Real load of the dependency-free crypto package (ESM + CJS) — proof, not just lint.
-const cryptoEsm = join(pkgsDir, "crypto", "dist", "esm", "testing.js");
-const cryptoCjs = join(pkgsDir, "crypto", "dist", "cjs", "testing.js");
+const cryptoEsm = join(packagesRoot, "secure-chat", "crypto", "dist", "esm", "testing.js");
+const cryptoCjs = join(packagesRoot, "secure-chat", "crypto", "dist", "cjs", "testing.js");
 try {
   const m = await import(pathToFileURL(cryptoEsm).href);
   if (!m.MockSecureChatCrypto) problems.push("crypto ESM: MockSecureChatCrypto not exported");

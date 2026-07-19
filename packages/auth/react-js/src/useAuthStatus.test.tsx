@@ -9,7 +9,7 @@ vi.mock("@agora-sdk/react-js", () => ({
 }));
 
 import { useAuth, useUser, useProject } from "@agora-sdk/react-js";
-import { useAuthStatus } from "./useAuthStatus";
+import { useAuthStatus } from "./useAuthStatus.js";
 
 const mockAuth = useAuth as unknown as ReturnType<typeof vi.fn>;
 const mockUser = useUser as unknown as ReturnType<typeof vi.fn>;
