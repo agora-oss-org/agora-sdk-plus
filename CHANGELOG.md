@@ -37,6 +37,13 @@ All notable changes to Agora SDK Plus are documented here, following
   space-went-private. `project/not-found` and `400 entities/missing-foreign-id` deliberately stay
   real errors — both are caller bugs and must not masquerade as an empty page.
 
+- **`@agora-sdk/public-read-core` — `usePublicComments`.** Offset-paginated flat comment list;
+  `loadMore` appends, and changing sort resets to page 1 (a page-2 offset into a re-sorted list is
+  meaningless). Reply paging is the same hook with `parentId` set — no separate hook. Accepts a null
+  `entityId` and no-ops, so it can sit downstream of `usePublicEntity` in a `foreignId` chain without
+  a caller-written guard. An empty list is explicitly **not** `notFound`: a published entity with no
+  comments yet is a success, and conflating the two would render "unavailable" on a healthy thread.
+
 ### Fixed
 
 - **CI/Publish — typecheck failed with `Cannot find module '@agora-sdk/react-js'`.** A committed
