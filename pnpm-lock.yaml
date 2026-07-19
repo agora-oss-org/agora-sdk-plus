@@ -84,6 +84,21 @@ importers:
         specifier: ^18.0.0 || ^19.0.0
         version: 18.3.1
 
+  packages/public-read/react-js:
+    dependencies:
+      '@agora-sdk/public-read-core':
+        specifier: workspace:*
+        version: link:../core
+      '@types/react':
+        specifier: ^18.0.0 || ^19.0.0
+        version: 18.3.31
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 18.3.1(react@18.3.1)
+
   packages/secure-chat/core:
     dependencies:
       '@agora-sdk/secure-chat-crypto':

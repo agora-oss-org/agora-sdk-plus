@@ -1,0 +1,54 @@
+{
+  "name": "@agora-sdk/public-read-react-js",
+  "version": "0.10.2",
+  "private": false,
+  "license": "Apache-2.0",
+  "author": "Agora SDK Plus, maintained by Jenova Marie",
+  "description": "Web components for the Agora anonymous public surface: a drop-in, read-only comment thread a blog can embed with no account and no Agora SDK installed. Re-exports @agora-sdk/public-read-core.",
+  "keywords": [
+    "agora",
+    "public",
+    "anonymous",
+    "comments",
+    "embed",
+    "read-only",
+    "react",
+    "web",
+    "typescript"
+  ],
+  "bugs": {
+    "url": "https://github.com/agora-oss-org/agora-sdk-plus/issues"
+  },
+  "homepage": "https://github.com/agora-oss-org/agora-sdk-plus",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agora-oss-org/agora-sdk-plus.git",
+    "directory": "packages/public-read/react-js"
+  },
+  "main": "dist/esm/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "type": "module",
+  "comment:esm-only": "ESM-only to match social-react-js and secure-chat-react-js: web/React consumers always bundle (Vite/webpack), so a CJS build would be dead weight.",
+  "scripts": {
+    "build:esm": "tsc -p tsconfig.esm.json",
+    "build": "rimraf dist && pnpm run build:esm && pnpm run copy:docs",
+    "prepublish": "pnpm run build",
+    "copy:docs": "cp ../../../docs/PUBLIC-READ.md ./PUBLIC-READ.md"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "PUBLIC-READ.md"
+  ],
+  "dependencies": {
+    "@agora-sdk/public-read-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "@types/react": "^18.0.0 || ^19.0.0",
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  }
+}

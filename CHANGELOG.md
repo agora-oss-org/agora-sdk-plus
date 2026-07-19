@@ -50,6 +50,13 @@ All notable changes to Agora SDK Plus are documented here, following
   is inferred from a full page because this route sends no pagination envelope — costing one wasted
   final request when the root count divides evenly, which beats inventing a count the server never sent.
 
+- **`@agora-sdk/public-read-react-js` — new package + `<PublicCommentNodeView>`.** Recursive renderer
+  over the server's nested `replies[]`, ESM-only like the other web packages. Handles the
+  author-deleted **tombstone** as a first-class state: the server blanks those comments in place on
+  both the list and the thread rather than omitting them, and their replies still render because the
+  subtree outlives its parent's content. Read-only is structural — the tree contains no button, form,
+  or input, and a test pins that.
+
 ### Fixed
 
 - **CI/Publish — typecheck failed with `Cannot find module '@agora-sdk/react-js'`.** A committed
