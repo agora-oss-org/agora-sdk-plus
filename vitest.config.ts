@@ -42,6 +42,9 @@ export default defineConfig({
       // Alias the social workspace package to its SOURCE so social-react-js component tests can import
       // the public `@agora-sdk/social-core` entry (provider, hooks, transport, types) without a build.
       "@agora-sdk/social-core": fromHere("packages/social/core/src/index.ts"),
+      // Alias the public-read workspace package to its SOURCE so public-read-react-js component
+      // tests can import the public `@agora-sdk/public-read-core` entry without a build.
+      "@agora-sdk/public-read-core": fromHere("packages/public-read/core/src/index.ts"),
     },
   },
 });

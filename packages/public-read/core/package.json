@@ -1,0 +1,50 @@
+{
+  "name": "@agora-sdk/public-read-core",
+  "version": "0.10.2",
+  "private": false,
+  "license": "Apache-2.0",
+  "author": "Agora SDK Plus, maintained by Jenova Marie",
+  "description": "Tokenless, read-only client for the Agora anonymous public surface: typed REST transport, provider + hooks for internet-public entities and their comment threads. No auth, no writes.",
+  "keywords": [
+    "agora",
+    "public",
+    "anonymous",
+    "comments",
+    "embed",
+    "read-only",
+    "react",
+    "typescript"
+  ],
+  "bugs": {
+    "url": "https://github.com/agora-oss-org/agora-sdk-plus/issues"
+  },
+  "homepage": "https://github.com/agora-oss-org/agora-sdk-plus",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agora-oss-org/agora-sdk-plus.git",
+    "directory": "packages/public-read/core"
+  },
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build:esm": "tsc -p tsconfig.esm.json",
+    "build:cjs": "tsc -p tsconfig.cjs.json && echo '{\"type\":\"commonjs\"}' > dist/cjs/package.json",
+    "build": "rimraf dist && pnpm run build:esm && pnpm run build:cjs",
+    "prepublish": "pnpm run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@agora-server/contract": "^0.21.0",
+    "axios": "^1.4.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  }
+}

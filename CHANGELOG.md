@@ -6,6 +6,21 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- **`@agora-sdk/public-read-core` — new package: tokenless transport for the anonymous public surface.**
+  `PublicReadRestClient` covers agora-server's four `/v7/:projectId/public/*` routes (entity by uuid,
+  entity by `foreignId`, flat comment list, server-nested thread). Its config type has **no token
+  field**, so no code path can attach a credential — `/public/*` replies with a wildcard
+  `Access-Control-Allow-Origin` and never credentials, and a credentialed cross-origin request would
+  fail preflight. The request interceptor additionally strips any ambient `Authorization` and forces
+  `withCredentials: false`, since a host app can set axios global defaults. Failures normalize to
+  `PublicReadApiError` (`status` + machine `code`); the exported `isNotFound` predicate isolates the
+  gate's deliberately-ambiguous `404` while excluding `project/not-found`, which is host
+  misconfiguration and must stay visible to the developer. `createIfNotFound` is never sent on
+  `by-foreign-id` — the walled route has it, the public one omits it deliberately, and honouring it
+  anonymously would be a row-creation primitive.
+
 ### Fixed
 
 - **CI/Publish — typecheck failed with `Cannot find module '@agora-sdk/react-js'`.** A committed
