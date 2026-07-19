@@ -49,9 +49,35 @@ branches on caller identity — a signed-in user gets exactly what a stranger ge
 
 | Route | Returns |
 |---|---|
+| `GET /public/entities/by-foreign-id?foreignId=` | shaped `Entity` — resolve by the host app's own stable key |
 | `GET /public/entities/:id` | shaped `Entity` (bare object, **no envelope**) |
 | `GET /public/entities/:id/comments` | `{ data: Comment[], pagination }` — one level |
 | `GET /public/entities/:id/comments/thread` | `{ data: PublicCommentNode[] }` — **server-nested, no pagination envelope** |
+
+### `foreignId` is the addressing story (and it implies a two-step)
+
+The entity's uuid is generated per install, so an embed cannot hardcode it. `by-foreign-id` resolves
+a published anchor by the key the host app already uses (`"homepage-comments"`, a post slug, …) —
+that handle is stable across installs and is what a blog should embed with.
+
+**But the comment routes remain uuid-only.** `by-foreign-id` resolves the *entity*, nothing more.
+Addressing a thread by `foreignId` is therefore inherently **two requests**: resolve the anchor, then
+fetch its thread by the returned uuid. This is a real cost (one extra round trip on first paint) and
+the SDK does it internally rather than making every host implement the dance. When the host already
+has a uuid, it passes `entityId` and the resolve step is skipped entirely.
+
+`foreignId` is **required** — omitting it is `400 entities/missing-foreign-id`, which is a distinct
+failure from the gate's `404` and must surface as a real error, not a neutral empty state.
+
+**No `createIfNotFound`.** The walled route's flag lazily inserts an authorless anchor; the public
+route deliberately omits it, since honoring it would hand anonymous callers a row-creation primitive.
+An unknown `foreignId` simply `404`s. The SDK must never send the flag.
+
+> ⚠️ **Guessability.** Because `foreignId` is chosen by the host app it is often guessable
+> (`"homepage-comments"`). The server's own docs flag this: a host that wants an internet-public
+> entity to be genuinely hard to find should address it by uuid and give it an unguessable
+> `foreignId` (or none). We surface that guidance in `docs/PUBLIC-READ.md` rather than pretending
+> `foreignId` is a secret.
 
 ### Query parameters (verified against `agora-server/docs/PUBLIC-API.md` §3)
 
@@ -177,7 +203,8 @@ against wildcard ACAO fails preflight).
 ### Methods
 
 ```ts
-getEntity(entityId, opts?: { include?: EntityInclude[] })            → Entity
+getEntity(entityId, opts?: PublicEntityQuery)                         → Entity
+getEntityByForeignId(foreignId, opts?: PublicEntityQuery)             → Entity
 getComments(entityId, opts?: PublicCommentsQuery)                     → PaginatedResponse<Comment>
 getThread(entityId, opts?: PublicThreadQuery)                         → { data: PublicCommentNode[] }
 ```
@@ -206,7 +233,7 @@ showing an empty thread when the host wired the wrong project id would be hostil
 ## 5. Contract re-export
 
 `packages/public-read/core/src/contract/index.ts` — type-only re-export of `Entity`, `Comment`,
-`User`, `PaginatedResponse`, `PaginationMetadata` from `@agora-server/contract`, following the
+`User`, `PaginatedResponse`, `PaginationMeta` from `@agora-server/contract`, following the
 established pattern: `export type { … } from` is erased at emit, so the CJS build never `require()`s
 the ESM-only contract at runtime. Per CLAUDE.md §2 this directory is exempt from per-symbol TSDoc —
 the docs live in the contract.
@@ -269,8 +296,8 @@ tree/state layer straddling both repos, which is precisely the coupling this spl
 ## 7. Hooks
 
 ```ts
-usePublicEntity(entityId, opts?)
-  → { entity, loading, notFound, error, refresh }
+usePublicEntity(target, opts?)          // target: string | { entityId } | { foreignId }
+  → { entity, entityId, loading, notFound, error, refresh }
 
 usePublicComments(entityId, opts?)
   → { comments, loading, notFound, error, hasMore, loadMore, page,
@@ -282,6 +309,26 @@ usePublicCommentThread(entityId, opts?)
 
 Reply paging in `paged` mode uses `usePublicComments` with `parentId` set — no separate hook, since
 the endpoint and the state machine are identical.
+
+### `usePublicEntity` is the resolver, and it owns the two-step
+
+It takes a **target selector**, not a bare id: a plain string (treated as a uuid, the common case),
+`{ entityId }`, or `{ foreignId }`. It dispatches to `getEntity` or `getEntityByForeignId`
+accordingly and, crucially, returns the resolved **`entityId`** alongside the entity.
+
+That returned `entityId` is what makes the two-step composable: the comment hooks stay uuid-only —
+exactly mirroring the server, so the SDK never invents an addressing mode the API doesn't have — and
+a caller chains them. `<PublicComments>` does this internally so a host never has to:
+
+```
+foreignId → usePublicEntity → entityId → usePublicCommentThread → nodes
+```
+
+The comment hooks accept `null`/`undefined` and no-op, which is what makes the chain safe while the
+first leg is still in flight. No new state machine, no special case.
+
+A `400 entities/missing-foreign-id` is **not** `notFound` — an empty `foreignId` is a caller bug and
+must surface as a real error rather than silently rendering "no comments".
 
 ### `notFound` is first-class, separate from `error`
 
@@ -306,7 +353,8 @@ against inventing a client-side count.
 
 ```tsx
 <PublicComments
-  entityId={id}
+  entityId={id}               // …or:
+  foreignId="homepage-comments"
   mode="thread" | "paged"     // default "thread"
   className
   renderComment
@@ -314,6 +362,12 @@ against inventing a client-side count.
   onSignInRequired
 />
 ```
+
+**Exactly one of `entityId` / `foreignId` is required.** `foreignId` is the addressing mode a blog
+should reach for — the uuid is generated per install, so it cannot be hardcoded in a template. Given
+`foreignId`, the component resolves the anchor first and then fetches the thread, costing one extra
+round trip on first paint; given `entityId` it skips straight to the thread. Passing both is a
+developer error and throws in development rather than silently preferring one.
 
 **`mode="thread"` is the default**: one round trip, server-nested, rendered recursively — exactly
 right for the embed case, which is the product. `mode="paged"` switches to the flat list with
@@ -418,6 +472,7 @@ should not propagate into the fork's docs:
 | Thread route reads `limit`/`offset` | It reads **`page`/`limit`** (limit default 50, clamped 100; page translated to an offset internally). |
 | Deleted comments are "omitted from the list entirely (not blanked in place)" | Author-deleted comments are **blanked in place** (Reddit-style tombstone, `userDeletedAt` set), on both the list and the thread — same as the walled surface. |
 | *(absent — post-dates the CR)* | The surface is now **CDN-cacheable**: `Cache-Control: public, max-age=0, s-maxage=300, must-revalidate` + `ETag` + `304` on success, `no-store` on errors. The CR's "do not cache client-side" guidance still holds and is now *also* the reason not to. |
+| *(absent — post-dates the CR)* | `GET /public/entities/by-foreign-id?foreignId=` now exists, resolving an anchor by the host app's own stable key. This is the addressing mode an embed actually needs, since the uuid is generated per install. It resolves the **entity only** — the comment routes stay uuid-only, so `foreignId` addressing is a two-step. |
 
 Confirmed correct, for the record: `include=user` really does redact `birthdate` → `null` and
 `metadata` → `{}` (`redactPublicUser`, `public.ts:27`, applied at all three sites).
@@ -434,7 +489,9 @@ Also noted: the server's own `docs/PUBLIC-API.md` §9 independently reaches this
 - Any write path whatsoever — no reactions, no comment creation, no reporting.
 - Single-comment public permalinks — parked v2 on the server; the route does not exist.
 - Public discovery listings — deliberately not built server-side. v1 is **by-direct-link only**: the
-  caller must already know the entity id.
+  caller must already know the entity's uuid *or* its `foreignId`.
+- `createIfNotFound` on `by-foreign-id` — the walled route has it; the public route deliberately does
+  not, since it would be a row-creation primitive for anonymous callers. The SDK never sends it.
 - Realtime — the public surface is REST-only; there is no anonymous socket namespace. (The fork has
   no comment sockets either, so this loses nothing.)
 - `react-native` / `expo` packages — deferred until a real use case appears (§3).
@@ -443,14 +500,23 @@ Also noted: the server's own `docs/PUBLIC-API.md` §9 independently reaches this
 
 ## 13. Verification still outstanding
 
-Everything above is verified against merged server code, the published contract, and live probes of
-`localhost:4000` (404 posture, wildcard ACAO with no credentials, absent `Vary: Origin`, `no-store`
-on errors, `204` preflight from a third-party origin).
+Verified against merged server code, the published contract, and live probes of `localhost:4000`:
+the 404 posture, wildcard ACAO with no credentials, absent `Vary: Origin`, `no-store` on errors, a
+`204` preflight from a third-party origin, and that `by-foreign-id` routes correctly (it answers
+`entities/not-found`, not `project/not-found`, so it resolves the project and reaches the gate).
 
-Not yet exercised live, because it needs a `projectId` and a **published** entity id:
+**Local fixture** — project `11111111-1111-1111-1111-111111111111`, anchor
+`foreignId: "homepage-comments"`, seeded by `pnpm seed` from `agora-server/apps/api` (it publishes
+through the real `PATCH /entities/:id/visibility`, so the seed exercises the same ladder checks a
+human operator hits). The anchor's uuid is generated per install — address it by `foreignId`.
 
-- the three success-path envelope shapes,
+Not yet exercised live, pending that seed run:
+
+- the four success-path envelope shapes,
 - the tombstone render case against real data,
 - the `ETag` / `If-None-Match` → `304` round trip.
 
 None block writing the implementation plan. They become blocking at the e2e task.
+
+> ⚠️ `by-foreign-id` is present in the server's working tree but **not yet committed** (HEAD is
+> `76f135e`). Confirm it has landed before relying on it in CI.
