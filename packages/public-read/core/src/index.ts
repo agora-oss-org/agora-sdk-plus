@@ -19,6 +19,11 @@ export type {
   UsePublicCommentsOptions,
   UsePublicCommentsValues,
 } from "./hooks/usePublicComments.js";
+export { usePublicCommentThread } from "./hooks/usePublicCommentThread.js";
+export type {
+  UsePublicCommentThreadOptions,
+  UsePublicCommentThreadValues,
+} from "./hooks/usePublicCommentThread.js";
 
 // ── transport (for advanced / non-React use — SSR, static generation) ────────
 export { PublicReadRestClient, PublicReadApiError, isNotFound } from "./transport/rest.js";

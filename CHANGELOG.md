@@ -44,6 +44,12 @@ All notable changes to Agora SDK Plus are documented here, following
   a caller-written guard. An empty list is explicitly **not** `notFound`: a published entity with no
   comments yet is a success, and conflating the two would render "unavailable" on a healthy thread.
 
+- **`@agora-sdk/public-read-core` — `usePublicCommentThread`.** One round trip for the whole nested
+  thread; exposes the server's `replies[]` shape verbatim rather than reassembling it client-side
+  (the fork's `addCommentsToTree` exists only because the walled surface serves flat pages). `hasMore`
+  is inferred from a full page because this route sends no pagination envelope — costing one wasted
+  final request when the root count divides evenly, which beats inventing a count the server never sent.
+
 ### Fixed
 
 - **CI/Publish — typecheck failed with `Cannot find module '@agora-sdk/react-js'`.** A committed
