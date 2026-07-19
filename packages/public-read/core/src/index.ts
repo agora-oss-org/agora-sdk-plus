@@ -11,6 +11,10 @@ export type {
   PublicReadContextValue,
 } from "./context/public-read-context.js";
 
+// ── hooks ────────────────────────────────────────────────────────────────────
+export { usePublicEntity } from "./hooks/usePublicEntity.js";
+export type { UsePublicEntityValues, PublicEntityTarget } from "./hooks/usePublicEntity.js";
+
 // ── transport (for advanced / non-React use — SSR, static generation) ────────
 export { PublicReadRestClient, PublicReadApiError, isNotFound } from "./transport/rest.js";
 export type {

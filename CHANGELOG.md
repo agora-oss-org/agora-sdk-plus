@@ -26,6 +26,17 @@ All notable changes to Agora SDK Plus are documented here, following
   public surface has no transparency endpoint), so there is no loading gate to wait on. Renders both
   with no `<ReplykeProvider>` in the tree and inside one without inheriting its token or boot latch.
 
+- **`@agora-sdk/public-read-core` — `usePublicEntity`, the resolver.** Addresses an anchor by uuid
+  **or** by the host app's `foreignId` (`"homepage-comments"`, a post slug) — necessary because the
+  uuid is generated per install and cannot be hardcoded in a template. Returns the resolved
+  `entityId` alongside the entity, which is what makes the two-step composable: the comment routes
+  are uuid-only, mirroring the server exactly, so a caller chains `foreignId → entityId → thread`
+  and the comment hooks no-op until the first leg lands. Exposes `notFound` as a first-class boolean
+  separate from `error`: the gate's `404` sets `notFound` with a `null` error, so a renderer cannot
+  accidentally show a message guessing between unpublished, missing, draft, removed, and
+  space-went-private. `project/not-found` and `400 entities/missing-foreign-id` deliberately stay
+  real errors — both are caller bugs and must not masquerade as an empty page.
+
 ### Fixed
 
 - **CI/Publish — typecheck failed with `Cannot find module '@agora-sdk/react-js'`.** A committed
