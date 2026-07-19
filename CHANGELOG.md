@@ -6,6 +6,8 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+## [0.11.1] — 2026-07-19
+
 ### Fixed
 
 - **`@agora-sdk/public-read-core` pinned a contract floor that does not contain `Entity.public`.**
