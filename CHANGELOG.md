@@ -71,6 +71,13 @@ All notable changes to Agora SDK Plus are documented here, following
   control. `onSignInRequired` renders a CTA only when supplied and only calls back — no auth UI, no
   auth dependency.
 
+- **`docs/PUBLIC-READ.md` — integration guide for the anonymous public surface.** Numbered-section
+  guide covering setup, the `foreignId` addressing two-step, all three hooks, the `<PublicComments>`
+  drop-in, the auth-swap pattern, the never-render rules (the deliberately ambiguous `404`, no token
+  or cookies, tombstones), and the caching/takedown window. Shipped inside
+  `@agora-sdk/public-read-react-js` via `copy:docs`. Root `README.md`, `ARCHITECTURE.md` (package
+  graph + a public-read layers/seams diagram), `STATUS.md`, and `CLAUDE.md` updated for the new group.
+
 ### Fixed
 
 - **`verify:dist` only ever checked `packages/secure-chat` — and was hiding a broken `auth-react-js`

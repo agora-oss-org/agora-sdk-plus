@@ -18,10 +18,13 @@ Each feature is its own package group with a dedicated guide. Start there:
 |---|---|---|---|
 | 🔐 | **Secure Chat** | The client side of Agora's end-to-end-encrypted messaging (MLS / RFC 9420). The server stays *blind*; all crypto lives here behind a swappable seam. | [`docs/SECURE-CHAT.md`](docs/SECURE-CHAT.md) |
 | 🌷 | **Social Graph** | The community-as-a-commons lenses — Weather, Constellation, Neighborhood, Transparency — designed to be rendered with care rather than mined. | [`docs/SOCIAL-GRAPH.md`](docs/SOCIAL-GRAPH.md) |
+| 🌍 | **Public Read** | Anonymous, read-only entity + comment reads for the open internet — the drop-in a blog embeds with no account and no SDK installed. | [`docs/PUBLIC-READ.md`](docs/PUBLIC-READ.md) |
 | 🔑 | **Auth ergonomics** | Black-box OAuth for web/MPA apps: a callback gated on real persistence, a first-class auth-ready signal, a logout that reliably ends the session, and stale-session self-heal. | [`docs/AUTH.md`](docs/AUTH.md) |
 
-> 🌿 **On independence.** Secure Chat and Social are fully **standalone** — they take everything they
-> need (`baseUrl`, access token) as explicit inputs and have *no* code dependency on the SDK. **Auth
+> 🌿 **On independence.** Secure Chat, Social, and Public Read are fully **standalone** — they take
+> everything they need (`baseUrl`, and where relevant an access token) as explicit inputs and have *no*
+> code dependency on the SDK. Public Read goes furthest: it is **tokenless**, taking only `baseUrl` +
+> `projectId`, so a third-party page with no Agora SDK at all can render a thread. **Auth
 > ergonomics** is the sole exception: it peer-depends on `@agora-sdk/react-js` because its purpose is
 > to coordinate with the SDK's own auth session. See [`CLAUDE.md`](CLAUDE.md) for the scoped-exception
 > rationale.
@@ -33,7 +36,8 @@ Each feature group mirrors the SDK's **core + platform** shape for consistency:
 ```
 secure-chat   @agora-sdk/secure-chat-{crypto,core,react-js,react-native,expo}
 social        @agora-sdk/social-{core,react-js,react-native,expo}
-auth          @agora-sdk/auth-react-js   (web only)
+public-read   @agora-sdk/public-read-{core,react-js}   (web only)
+auth          @agora-sdk/auth-react-js                 (web only)
 ```
 
 Per-package roles are documented in each feature's guide above; the package graph and seams are drawn
@@ -41,8 +45,9 @@ in [`ARCHITECTURE.md`](ARCHITECTURE.md). 🗺️
 
 > 📘 Each guide **ships inside** its primary web package, so it travels with an `npm install`:
 > [`AUTH.md`](docs/AUTH.md) in `@agora-sdk/auth-react-js`, [`SECURE-CHAT.md`](docs/SECURE-CHAT.md) in
-> `@agora-sdk/secure-chat-react-js`, and [`SOCIAL-GRAPH.md`](docs/SOCIAL-GRAPH.md) in
-> `@agora-sdk/social-react-js`. The copies are generated from `docs/` at build time (single source of
+> `@agora-sdk/secure-chat-react-js`, [`SOCIAL-GRAPH.md`](docs/SOCIAL-GRAPH.md) in
+> `@agora-sdk/social-react-js`, and [`PUBLIC-READ.md`](docs/PUBLIC-READ.md) in
+> `@agora-sdk/public-read-react-js`. The copies are generated from `docs/` at build time (single source of
 > truth), so they never drift.
 
 ## 🛠️ Develop
