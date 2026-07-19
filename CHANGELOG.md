@@ -57,6 +57,20 @@ All notable changes to Agora SDK Plus are documented here, following
   subtree outlives its parent's content. Read-only is structural — the tree contains no button, form,
   or input, and a test pins that.
 
+- **`@agora-sdk/public-read-react-js` — `<PublicComments>`, the drop-in thread.** Takes either an
+  `entityId` or — the mode an embed actually wants — a `foreignId` like `"homepage-comments"`, since
+  the uuid is generated per install and can't be hardcoded in a template. Given a `foreignId` it
+  resolves the anchor and then fetches the thread by the returned uuid, because the comment routes
+  are uuid-only; given an `entityId` it skips the resolve entirely. A `foreignId` that doesn't
+  resolve renders the *same* neutral empty state as a thread that `404`s — a reader must not be able
+  to tell which leg failed. Defaults to `mode="thread"` (one round trip, server-nested);
+  `mode="paged"` switches to the flat list with a "Load more" control. The empty state is identical
+  for "no comments yet" and the gate's `404`, and a test pins that neither ever names a reason —
+  differing copy would rebuild the existence oracle the 404-never-403 posture exists to deny. Styling
+  is self-contained inline styles with a `className` hook and a `renderComment` render prop for full
+  control. `onSignInRequired` renders a CTA only when supplied and only calls back — no auth UI, no
+  auth dependency.
+
 ### Fixed
 
 - **CI/Publish — typecheck failed with `Cannot find module '@agora-sdk/react-js'`.** A committed

@@ -10,6 +10,8 @@ export type {
   RenderComment,
   RenderCommentContext,
 } from "./components/PublicCommentNodeView.js";
+export { PublicComments } from "./components/PublicComments.js";
+export type { PublicCommentsProps, PublicCommentsMode } from "./components/PublicComments.js";
 
 // ── core (provider, hooks, transport, types) ─────────────────────────────────
 export * from "@agora-sdk/public-read-core";
