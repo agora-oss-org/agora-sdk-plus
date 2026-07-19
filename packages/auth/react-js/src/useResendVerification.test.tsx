@@ -9,8 +9,8 @@ vi.mock("@agora-sdk/react-js", () => ({
 }));
 
 import { useProject } from "@agora-sdk/react-js";
-import { useResendVerification } from "./useResendVerification";
-import { ResendVerificationButton } from "./ResendVerificationButton";
+import { useResendVerification } from "./useResendVerification.js";
+import { ResendVerificationButton } from "./ResendVerificationButton.js";
 
 const mockProject = useProject as unknown as ReturnType<typeof vi.fn>;
 

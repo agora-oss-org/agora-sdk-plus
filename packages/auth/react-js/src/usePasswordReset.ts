@@ -5,7 +5,7 @@
 // intentionally unauthenticated (a recovery flow). The token and password are never logged.
 import { useEffect, useRef, useState } from "react";
 import { useProject, getApiBaseUrl } from "@agora-sdk/react-js";
-import { parseAuthLink, stripTokenFromUrl } from "./parseAuthLink";
+import { parseAuthLink, stripTokenFromUrl } from "./parseAuthLink.js";
 
 /** Lifecycle of the reset-password page. `invalid-link` means the landing link was bad; hide the form. */
 export type PasswordResetStatus = "ready" | "submitting" | "success" | "error" | "invalid-link";

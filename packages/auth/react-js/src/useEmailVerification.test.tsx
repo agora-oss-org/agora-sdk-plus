@@ -8,8 +8,8 @@ vi.mock("@agora-sdk/react-js", () => ({
 }));
 
 import { useProject, useVerifyEmail } from "@agora-sdk/react-js";
-import { useEmailVerification } from "./useEmailVerification";
-import { EmailVerificationHandler } from "./EmailVerificationHandler";
+import { useEmailVerification } from "./useEmailVerification.js";
+import { EmailVerificationHandler } from "./EmailVerificationHandler.js";
 
 const mockProject = useProject as unknown as ReturnType<typeof vi.fn>;
 const mockUseVerify = useVerifyEmail as unknown as ReturnType<typeof vi.fn>;

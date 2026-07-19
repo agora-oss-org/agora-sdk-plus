@@ -13,7 +13,7 @@ vi.mock("@agora-sdk/react-js", () => ({
   getApiBaseUrl: vi.fn(),
 }));
 
-import * as api from "./index";
+import * as api from "./index.js";
 
 describe("public API", () => {
   it("exports every hook + the component", () => {

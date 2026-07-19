@@ -4,7 +4,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 
 vi.mock("@agora-sdk/react-js", () => ({ useSignOutAll: vi.fn() }));
 import { useSignOutAll } from "@agora-sdk/react-js";
-import { useSignOutEverywhere } from "./useSignOutEverywhere";
+import { useSignOutEverywhere } from "./useSignOutEverywhere.js";
 
 const mockSignOutAll = useSignOutAll as unknown as ReturnType<typeof vi.fn>;
 beforeEach(() => vi.clearAllMocks());

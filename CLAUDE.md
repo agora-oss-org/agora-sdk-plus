@@ -77,6 +77,20 @@ Future features follow the same layout: `packages/<feature>/{core,react-js,react
 `@agora-sdk/<feature>-{core,react-js,...}`. The pnpm workspace globs `packages/**/*`.
 
 ```
+packages/public-read/core         @agora-sdk/public-read-core         tokenless transport + provider + hooks for the anonymous /public/* surface
+packages/public-read/react-js     @agora-sdk/public-read-react-js     web: <PublicComments> drop-in. Re-exports public-read-core. (ESM-only)
+```
+
+The third feature group, **public-read** — the client for agora-server's anonymous, read-only
+`/v7/:projectId/public/*` surface (internet-public entities + their comment threads). It is the
+**most standalone package in this repo and the only tokenless one**: `baseUrl` + `projectId` in, no
+access token, no `@agora-sdk/*` dependency of any kind, so a third-party blog with no SDK installed
+can embed a thread. Read-only by construction — GET routes only, no compose UI, no code path that
+could attach a credential (the surface's wildcard CORS would reject one anyway). Web-only at v1; the
+server's gate returns a deliberately ambiguous `404` that the SDK surfaces as a neutral `notFound`
+boolean, never a message. See [`docs/PUBLIC-READ.md`](docs/PUBLIC-READ.md).
+
+```
 packages/auth/react-js            @agora-sdk/auth-react-js            web: black-box OAuth callback + auth ergonomics (peer-deps @agora-sdk/react-js)
 ```
 
@@ -138,16 +152,16 @@ inverts the dependency. The arrow is **SDK → contract**; see `STATUS.md` for t
 - `pnpm install` — install
 - `pnpm run build-all` — build every package in dependency order: `secure-chat-crypto` first, then the
   secure-chat group (core → react-js → react-native → expo), the social group (core → react-js →
-  react-native → expo), and `auth-react-js` last. Each compiles dual ESM (`dist/esm`,
-  `tsconfig.esm.json`) + CJS (`dist/cjs`, `tsconfig.cjs.json`) — **except the two web packages,
-  `secure-chat-react-js` and `social-react-js`, which are ESM-only** (`secure-chat-react-js` depends on
-  the ESM-only ts-mls core; `social-react-js` follows suit to match, and its `d3-force` dependency is
-  ESM-only too — so a CJS build would never load at runtime for either; web/React consumers bundle
-  anyway)
+  react-native → expo), the public-read group (core → react-js), and `auth-react-js` last. Each compiles dual ESM (`dist/esm`,
+  `tsconfig.esm.json`) + CJS (`dist/cjs`, `tsconfig.cjs.json`) — **except the three web packages,
+  `secure-chat-react-js`, `social-react-js`, and `public-read-react-js`, which are ESM-only**
+  (`secure-chat-react-js` depends on the ESM-only ts-mls core; `social-react-js` follows suit to match,
+  and its `d3-force` dependency is ESM-only too — so a CJS build would never load at runtime for
+  either; `public-read-react-js` matches the convention. Web/React consumers bundle anyway)
 - `pnpm --filter @agora-sdk/secure-chat-core run build` — build one package while iterating
 - `pnpm run verify:dist` — sanity-check built `dist/` outputs (`scripts/verify-dist.mjs`)
 - `pnpm run version:patch` / `version:minor`, `publish-prod` / `publish-beta` — release across all
-  ten publishable packages (run `scripts/write-version.mjs` after a version bump)
+  twelve publishable packages (run `scripts/write-version.mjs` after a version bump)
 - `pnpm run typecheck` — `tsc --noEmit` at the root
 - `pnpm test` — unit suite (vitest); fully mocked, server-free. Single file/pattern:
   `pnpm test <path-or-substring>` (e.g. `pnpm test useAuthSelfHeal`); single case: add `-t "<name>"`

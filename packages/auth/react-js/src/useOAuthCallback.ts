@@ -12,7 +12,7 @@
 // race entirely. Because the SDK's same-tab writes don't emit a `storage` event, we poll.
 import { useEffect, useRef, useState } from "react";
 import { useOAuthSignIn, useProject } from "@agora-sdk/react-js";
-import { readActiveAccount, pruneAllAccounts } from "./accountStorage";
+import { readActiveAccount, pruneAllAccounts } from "./accountStorage.js";
 
 /** How often (ms) we re-read the persisted row while waiting. Imperceptible for a one-shot login gate. */
 const POLL_MS = 50;

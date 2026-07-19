@@ -8,8 +8,8 @@ vi.mock("@agora-sdk/react-js", () => ({
 }));
 
 import { useOAuthSignIn, useProject } from "@agora-sdk/react-js";
-import { useOAuthCallback } from "./useOAuthCallback";
-import { readAccountMap } from "./accountStorage";
+import { useOAuthCallback } from "./useOAuthCallback.js";
+import { readAccountMap } from "./accountStorage.js";
 
 const mockOAuth = useOAuthSignIn as unknown as ReturnType<typeof vi.fn>;
 const mockProject = useProject as unknown as ReturnType<typeof vi.fn>;

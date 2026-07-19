@@ -11,6 +11,11 @@ A running ledger of what's built, what's stubbed, and the cross-repo work this d
   `/secure` socket client, `SecureChatProvider` + hooks, base64 utils. Depends on the crypto package
   for the interface; consumes the wire types from the published `@agora-server/contract` (type-only
   re-export in `core/src/contract/`).
+- `@agora-sdk/public-read-core` + `@agora-sdk/public-read-react-js`: the anonymous `/public/*` client
+  — tokenless transport (`baseUrl` + `projectId` only, **no** credential field in the config type),
+  `PublicReadProvider`, `usePublicEntity` / `usePublicComments` / `usePublicCommentThread`, and the
+  `<PublicComments>` drop-in. Consumes `@agora-server/contract@^0.21.0` (the floor that carries
+  `Entity.public`). Web-only at v1; `core` is platform-agnostic so native can follow.
 - Platform packages: `react-js` (Phase 2 web — **done**: real ts-mls crypto, IndexedDB persistence,
   KeyPackage replenishment, replay/gap enforcement, metadata padding; see "What's next" below),
   `react-native` + `expo` (Phase 3 stubs).

@@ -6,7 +6,96 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Added
+
+- **`@agora-sdk/public-read-core` — new package: tokenless transport for the anonymous public surface.**
+  `PublicReadRestClient` covers agora-server's four `/v7/:projectId/public/*` routes (entity by uuid,
+  entity by `foreignId`, flat comment list, server-nested thread). Its config type has **no token
+  field**, so no code path can attach a credential — `/public/*` replies with a wildcard
+  `Access-Control-Allow-Origin` and never credentials, and a credentialed cross-origin request would
+  fail preflight. The request interceptor additionally strips any ambient `Authorization` and forces
+  `withCredentials: false`, since a host app can set axios global defaults. Failures normalize to
+  `PublicReadApiError` (`status` + machine `code`); the exported `isNotFound` predicate isolates the
+  gate's deliberately-ambiguous `404` while excluding `project/not-found`, which is host
+  misconfiguration and must stay visible to the developer. `createIfNotFound` is never sent on
+  `by-foreign-id` — the walled route has it, the public one omits it deliberately, and honouring it
+  anonymously would be a row-creation primitive.
+
+- **`@agora-sdk/public-read-core` — `<PublicReadProvider>` + `usePublicRead`.** Constructs and
+  memoizes the tokenless REST client. Takes no token prop and issues **no** request on mount (the
+  public surface has no transparency endpoint), so there is no loading gate to wait on. Renders both
+  with no `<ReplykeProvider>` in the tree and inside one without inheriting its token or boot latch.
+
+- **`@agora-sdk/public-read-core` — `usePublicEntity`, the resolver.** Addresses an anchor by uuid
+  **or** by the host app's `foreignId` (`"homepage-comments"`, a post slug) — necessary because the
+  uuid is generated per install and cannot be hardcoded in a template. Returns the resolved
+  `entityId` alongside the entity, which is what makes the two-step composable: the comment routes
+  are uuid-only, mirroring the server exactly, so a caller chains `foreignId → entityId → thread`
+  and the comment hooks no-op until the first leg lands. Exposes `notFound` as a first-class boolean
+  separate from `error`: the gate's `404` sets `notFound` with a `null` error, so a renderer cannot
+  accidentally show a message guessing between unpublished, missing, draft, removed, and
+  space-went-private. `project/not-found` and `400 entities/missing-foreign-id` deliberately stay
+  real errors — both are caller bugs and must not masquerade as an empty page.
+
+- **`@agora-sdk/public-read-core` — `usePublicComments`.** Offset-paginated flat comment list;
+  `loadMore` appends, and changing sort resets to page 1 (a page-2 offset into a re-sorted list is
+  meaningless). Reply paging is the same hook with `parentId` set — no separate hook. Accepts a null
+  `entityId` and no-ops, so it can sit downstream of `usePublicEntity` in a `foreignId` chain without
+  a caller-written guard. An empty list is explicitly **not** `notFound`: a published entity with no
+  comments yet is a success, and conflating the two would render "unavailable" on a healthy thread.
+
+- **`@agora-sdk/public-read-core` — `usePublicCommentThread`.** One round trip for the whole nested
+  thread; exposes the server's `replies[]` shape verbatim rather than reassembling it client-side
+  (the fork's `addCommentsToTree` exists only because the walled surface serves flat pages). `hasMore`
+  is inferred from a full page because this route sends no pagination envelope — costing one wasted
+  final request when the root count divides evenly, which beats inventing a count the server never sent.
+
+- **`@agora-sdk/public-read-react-js` — new package + `<PublicCommentNodeView>`.** Recursive renderer
+  over the server's nested `replies[]`, ESM-only like the other web packages. Handles the
+  author-deleted **tombstone** as a first-class state: the server blanks those comments in place on
+  both the list and the thread rather than omitting them, and their replies still render because the
+  subtree outlives its parent's content. Read-only is structural — the tree contains no button, form,
+  or input, and a test pins that.
+
+- **`@agora-sdk/public-read-react-js` — `<PublicComments>`, the drop-in thread.** Takes either an
+  `entityId` or — the mode an embed actually wants — a `foreignId` like `"homepage-comments"`, since
+  the uuid is generated per install and can't be hardcoded in a template. Given a `foreignId` it
+  resolves the anchor and then fetches the thread by the returned uuid, because the comment routes
+  are uuid-only; given an `entityId` it skips the resolve entirely. A `foreignId` that doesn't
+  resolve renders the *same* neutral empty state as a thread that `404`s — a reader must not be able
+  to tell which leg failed. Defaults to `mode="thread"` (one round trip, server-nested);
+  `mode="paged"` switches to the flat list with a "Load more" control. The empty state is identical
+  for "no comments yet" and the gate's `404`, and a test pins that neither ever names a reason —
+  differing copy would rebuild the existence oracle the 404-never-403 posture exists to deny. Styling
+  is self-contained inline styles with a `className` hook and a `renderComment` render prop for full
+  control. `onSignInRequired` renders a CTA only when supplied and only calls back — no auth UI, no
+  auth dependency.
+
+- **`docs/PUBLIC-READ.md` — integration guide for the anonymous public surface.** Numbered-section
+  guide covering setup, the `foreignId` addressing two-step, all three hooks, the `<PublicComments>`
+  drop-in, the auth-swap pattern, the never-render rules (the deliberately ambiguous `404`, no token
+  or cookies, tombstones), and the caching/takedown window. Shipped inside
+  `@agora-sdk/public-read-react-js` via `copy:docs`. Root `README.md`, `ARCHITECTURE.md` (package
+  graph + a public-read layers/seams diagram), `STATUS.md`, and `CLAUDE.md` updated for the new group.
+
+- **Opt-in e2e for the public-read surface.** Exercises all four routes against a locally running
+  `agora-server`, plus what a mocked transport cannot prove: wildcard CORS with no credentials and no
+  `Vary: Origin`, the `ETag` → `304` revalidation round trip, `no-store` on the gate's `404`, live PII
+  redaction on an included user, the `isNotFound` vs `project/not-found` split, and that the walled
+  surface still `401`s the same entity (the hole is the `/public/` prefix, not the entity). Resolves
+  the seeded anchor by `foreignId` rather than hardcoding a uuid, since the uuid is per-install.
+  Skipped unless `AGORA_E2E_PUBLIC_PROJECT_ID` is set, so `pnpm test` and CI stay server-free.
+
 ### Fixed
+
+- **`verify:dist` only ever checked `packages/secure-chat` — and was hiding a broken `auth-react-js`
+  build.** The script hardcoded that one feature group's directory, so `social`, `auth`, and now
+  `public-read` were never linted for extensionless ESM specifiers or a missing CJS type marker,
+  despite CI running it on every push. Generalized to scan all `packages/<feature>/<platform>` dirs.
+  It immediately caught 22 extensionless relative imports in `@agora-sdk/auth-react-js`: `tsc` never
+  rewrites specifiers, so a source `from "./x"` emits `from "./x"`, which **Node's ESM resolver
+  cannot load**. Bundlers tolerate it, which is why it shipped unnoticed. Added the `.js` extensions
+  across that package's sources.
 
 - **CI/Publish — typecheck failed with `Cannot find module '@agora-sdk/react-js'`.** A committed
   `pnpm.overrides` in the root `package.json` pinned `@agora-sdk/react-js` to a local sibling checkout

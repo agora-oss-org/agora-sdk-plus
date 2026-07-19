@@ -3,7 +3,7 @@
 // token from the URL and (optionally) redirects. Mirrors useOAuthCallback's one-shot, ref-guarded shape.
 import { useEffect, useRef, useState } from "react";
 import { useProject, useVerifyEmail } from "@agora-sdk/react-js";
-import { parseAuthLink, stripTokenFromUrl } from "./parseAuthLink";
+import { parseAuthLink, stripTokenFromUrl } from "./parseAuthLink.js";
 
 /** Lifecycle of the verify-email page. */
 export type EmailVerificationStatus = "pending" | "success" | "error";

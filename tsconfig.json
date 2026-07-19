@@ -20,7 +20,8 @@
       "@agora-sdk/secure-chat-crypto/ts-mls": ["packages/secure-chat/crypto/src/ts-mls/index.ts"],
       "@agora-sdk/secure-chat-core": ["packages/secure-chat/core/src/index.ts"],
       "@agora-sdk/social-core": ["packages/social/core/src/index.ts"],
-      "@agora-sdk/social-react-native": ["packages/social/react-native/src/index.ts"]
+      "@agora-sdk/social-react-native": ["packages/social/react-native/src/index.ts"],
+      "@agora-sdk/public-read-core": ["packages/public-read/core/src/index.ts"]
     }
   },
   "include": ["packages/**/src/**/*"],

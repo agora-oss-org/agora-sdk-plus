@@ -40,6 +40,10 @@ flowchart TD
       sRnP["@agora-sdk/social-react-native<br/>RN components (d3-force + svg)"]
       sExpoP["@agora-sdk/social-expo<br/>re-export of social-react-native"]
     end
+    subgraph "public-read (tokenless — anonymous)"
+      pCoreP["@agora-sdk/public-read-core<br/>tokenless transport + provider + hooks"]
+      pWebP["@agora-sdk/public-read-react-js<br/>web: PublicComments drop-in"]
+    end
     authP["@agora-sdk/auth-react-js<br/>web: OAuth callback + auth ergonomics"]
   end
 
@@ -52,10 +56,13 @@ flowchart TD
   sWebP --> sCoreP
   sRnP --> sCoreP
   sExpoP --> sRnP
+  pCoreP -->|wire types: depends on| contract
+  pWebP --> pCoreP
   authP -.->|peer-dep: observes auth state| sdk
   server -.->|dev-dep: mock for tests| crypto
   coreP <-->|REST + /secure socket| server
   sCoreP <-->|REST only| server
+  pCoreP -->|REST only, anonymous /public/*| server
 ```
 
 The arrows worth memorizing: **SDK → contract** (never the reverse) — true for *both* `secure-chat-core`
@@ -64,6 +71,36 @@ ships none of this crypto). The lone outbound **`auth-react-js` ⇢ `@agora-sdk/
 the single deliberate exception to "no `@agora-sdk/core` dependency" — auth is about the SDK session;
 secure-chat / social stay standalone (`baseUrl` + token in). Note the two feature groups never touch
 each other: social is **pure data** — no `secure-chat-crypto`, no `/secure` socket.
+
+**`public-read` is the extreme case of the standalone rule** — read its box as much for the arrows it
+*lacks* as the one it has. It depends on `@agora-server/contract` for types and on nothing else in
+this repo or the fork; it takes no access token at all, only `baseUrl` + `projectId`. That absence is
+the architecture: a third-party blog with no Agora SDK installed can render a thread, and no code path
+exists that could attach a credential to a surface whose wildcard CORS would reject one.
+
+## Public-read layers & seams
+
+```mermaid
+flowchart LR
+  host["host page (a blog)<br/>no Agora SDK, no account"] --> prov["PublicReadProvider<br/>baseUrl + projectId — no token"]
+  prov --> rest["PublicReadRestClient<br/>bare axios; strips Authorization,<br/>withCredentials: false"]
+  rest -->|"GET /public/entities/by-foreign-id"| gate{{"server gate<br/>404, never 403"}}
+  rest -->|"GET /public/entities/:id/comments{,/thread}"| gate
+  prov --> hookE["usePublicEntity<br/>resolves foreignId → entityId"]
+  hookE -->|"entityId"| hookT["usePublicCommentThread"]
+  hookE -->|"entityId"| hookL["usePublicComments"]
+  hookT --> comp["&lt;PublicComments&gt;<br/>one neutral empty state"]
+  hookL --> comp
+  gate -.->|"404"| neutral["notFound: true, error: null"]
+  neutral --> comp
+```
+
+Two seams carry the security posture. **The token seam does not exist** — `PublicReadRestConfig` has
+no credential field, so tokenlessness is a type-level guarantee rather than a convention. And **the
+`notFound` seam** keeps the gate's deliberate ambiguity intact end to end: a `404` becomes a boolean,
+never an `Error` with a message, so no renderer can leak a guess between unpublished / missing /
+draft / removed / space-went-private. The `foreignId → entityId` hop is drawn explicitly because the
+comment routes are uuid-only — the SDK mirrors the server's addressing rather than inventing one.
 
 ## Layers & seams (inside the SDK)
 

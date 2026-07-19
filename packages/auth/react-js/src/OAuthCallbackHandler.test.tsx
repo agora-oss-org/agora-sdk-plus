@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
 vi.mock("./useOAuthCallback", () => ({ useOAuthCallback: vi.fn() }));
-import { useOAuthCallback } from "./useOAuthCallback";
-import { OAuthCallbackHandler } from "./OAuthCallbackHandler";
+import { useOAuthCallback } from "./useOAuthCallback.js";
+import { OAuthCallbackHandler } from "./OAuthCallbackHandler.js";
 
 const mockCb = useOAuthCallback as unknown as ReturnType<typeof vi.fn>;
 beforeEach(() => vi.clearAllMocks());

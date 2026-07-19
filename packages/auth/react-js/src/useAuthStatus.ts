@@ -2,7 +2,7 @@
 // and stop guessing when the two settle. Observes the SDK's own state via its public hooks; reads
 // storage only to answer "is the session durable (in localStorage), not just in Redux?".
 import { useAuth, useUser, useProject } from "@agora-sdk/react-js";
-import { hasPersistedRefreshToken } from "./accountStorage";
+import { hasPersistedRefreshToken } from "./accountStorage.js";
 
 /** Coarse, settled auth state derived once for the whole app. */
 export type AuthReadyStatus = "initializing" | "authenticated" | "unauthenticated";

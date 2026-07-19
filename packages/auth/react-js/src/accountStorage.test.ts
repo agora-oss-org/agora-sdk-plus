@@ -8,7 +8,7 @@ import {
   pruneAccount,
   pruneAllAccounts,
   type AccountMap,
-} from "./accountStorage";
+} from "./accountStorage.js";
 
 const PROJECT = "proj_123";
 const KEY = `replyke-accounts:${PROJECT}`;

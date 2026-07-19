@@ -2,7 +2,7 @@
 // "Sent"/error state. Deliberately tiny — its value is the disable-and-status wiring, not layout.
 import { useEffect } from "react";
 import type { ReactNode } from "react";
-import { useResendVerification } from "./useResendVerification";
+import { useResendVerification } from "./useResendVerification.js";
 
 /** Props for {@link ResendVerificationButton}. */
 export type ResendVerificationButtonProps = {

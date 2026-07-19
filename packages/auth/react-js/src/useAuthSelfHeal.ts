@@ -7,8 +7,8 @@
 // accounts in-session.
 import { useEffect, useRef } from "react";
 import { useProject } from "@agora-sdk/react-js";
-import { useAuthStatus } from "./useAuthStatus";
-import { readAccountMap, pruneAccount } from "./accountStorage";
+import { useAuthStatus } from "./useAuthStatus.js";
+import { readAccountMap, pruneAccount } from "./accountStorage.js";
 
 /**
  * Mount this once inside `<ReplykeProvider>` (alongside the comment/thread UI) to prune a stale-only
