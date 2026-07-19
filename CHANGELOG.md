@@ -78,6 +78,14 @@ All notable changes to Agora SDK Plus are documented here, following
   `@agora-sdk/public-read-react-js` via `copy:docs`. Root `README.md`, `ARCHITECTURE.md` (package
   graph + a public-read layers/seams diagram), `STATUS.md`, and `CLAUDE.md` updated for the new group.
 
+- **Opt-in e2e for the public-read surface.** Exercises all four routes against a locally running
+  `agora-server`, plus what a mocked transport cannot prove: wildcard CORS with no credentials and no
+  `Vary: Origin`, the `ETag` → `304` revalidation round trip, `no-store` on the gate's `404`, live PII
+  redaction on an included user, the `isNotFound` vs `project/not-found` split, and that the walled
+  surface still `401`s the same entity (the hole is the `/public/` prefix, not the entity). Resolves
+  the seeded anchor by `foreignId` rather than hardcoding a uuid, since the uuid is per-install.
+  Skipped unless `AGORA_E2E_PUBLIC_PROJECT_ID` is set, so `pnpm test` and CI stay server-free.
+
 ### Fixed
 
 - **`verify:dist` only ever checked `packages/secure-chat` — and was hiding a broken `auth-react-js`
