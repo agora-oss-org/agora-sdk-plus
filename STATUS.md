@@ -14,7 +14,7 @@ A running ledger of what's built, what's stubbed, and the cross-repo work this d
 - `@agora-sdk/public-read-core` + `@agora-sdk/public-read-react-js`: the anonymous `/public/*` client
   — tokenless transport (`baseUrl` + `projectId` only, **no** credential field in the config type),
   `PublicReadProvider`, `usePublicEntity` / `usePublicComments` / `usePublicCommentThread`, and the
-  `<PublicComments>` drop-in. Consumes `@agora-server/contract@^0.21.0` (the floor that carries
+  `<PublicComments>` drop-in. Consumes `@agora-server/contract@^0.22.0` (the floor that carries
   `Entity.public`). Web-only at v1; `core` is platform-agnostic so native can follow.
 - Platform packages: `react-js` (Phase 2 web — **done**: real ts-mls crypto, IndexedDB persistence,
   KeyPackage replenishment, replay/gap enforcement, metadata padding; see "What's next" below),

@@ -41,7 +41,7 @@
     "dist"
   ],
   "dependencies": {
-    "@agora-server/contract": "^0.21.0",
+    "@agora-server/contract": "^0.22.0",
     "axios": "^1.4.0"
   },
   "peerDependencies": {

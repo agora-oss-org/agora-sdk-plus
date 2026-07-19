@@ -24,6 +24,6 @@
       "@agora-sdk/public-read-core": ["packages/public-read/core/src/index.ts"]
     }
   },
-  "include": ["packages/**/src/**/*"],
+  "include": ["packages/**/src/**/*", "e2e/**/*"],
   "exclude": ["node_modules", "recycle_bin", "packages/**/dist"]
 }

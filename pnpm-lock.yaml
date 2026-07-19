@@ -75,8 +75,8 @@ importers:
   packages/public-read/core:
     dependencies:
       '@agora-server/contract':
-        specifier: ^0.21.0
-        version: 0.21.0
+        specifier: ^0.22.0
+        version: 0.22.0
       axios:
         specifier: ^1.4.0
         version: 1.17.0
@@ -297,8 +297,8 @@ packages:
   '@agora-server/contract@0.13.0':
     resolution: {integrity: sha512-KqNzbmKzMVCuDDiJ5xJrt1NgJYRwQNJteGIHXBBRcJYoI1W6WPZgCiEzuzokC7zMQyoDsAVWzdmkbZs0hDC4Fg==}
 
-  '@agora-server/contract@0.21.0':
-    resolution: {integrity: sha512-EYQJOSi8+I8HpjRcM2G0UtegS0PqgfkzXCNgjEQ8Ga/aeFr6qUiX+XQjyhKeFARAfxJNApbKuB7s1qYQHxhLJQ==}
+  '@agora-server/contract@0.22.0':
+    resolution: {integrity: sha512-P84Q4lRYNZ1F0m2hYoHp2RDFaALy6i/zmdwT/50tP1eenLzH6e94/8blC1oVDetfvP48blOEcT5ub3t+g0P2UA==}
 
   '@asamuzakjp/css-color@5.1.11':
     resolution: {integrity: sha512-KVw6qIiCTUQhByfTd78h2yD1/00waTmm9uy/R7Ck/ctUyAPj+AEDLkQIdJW0T8+qGgj3j5bpNKK7Q3G+LedJWg==}
@@ -3790,7 +3790,7 @@ snapshots:
     dependencies:
       zod: 3.25.76
 
-  '@agora-server/contract@0.21.0':
+  '@agora-server/contract@0.22.0':
     dependencies:
       zod: 3.25.76
 

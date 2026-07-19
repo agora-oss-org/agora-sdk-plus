@@ -6,6 +6,19 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+### Fixed
+
+- **`@agora-sdk/public-read-core` pinned a contract floor that does not contain `Entity.public`.**
+  `0.11.0` shipped `"@agora-server/contract": "^0.21.0"`, but the `Entity.public` field was committed
+  *after* the contract's `v0.21.0` release tag and first published in **`0.22.0`** — verified by
+  unpacking both tarballs. pnpm resolved the floor exactly, so the whole feature was built against a
+  contract lacking the field its gate is named for. Bumped to `^0.22.0`.
+- **`pnpm run typecheck` never covered `e2e/`, which is why the above went unnoticed.** The root
+  `tsconfig.json` `include` was `packages/**/src/**/*`, so both e2e suites were outside the program —
+  and `entity.public` is referenced *only* from `e2e/public-read.e2e.ts`. Added `e2e/**/*` to
+  `include`; a negative control confirms the file is genuinely checked now (a bogus field errors),
+  meaning this exact class of bug fails the build going forward.
+
 ## [0.11.0] — 2026-07-19
 
 ### Added

@@ -4,7 +4,8 @@
 **Status:** Approved (brainstormed with Jenova)
 **Answers:** `docs/superpowers/specs/2026-07-18-public-read-comments-change-request.md` (from the agora-sdk fork maintainers)
 **Server dependency:** `agora-server` — **merged to `root`** (`14b7bc9`), documented in that repo's `docs/PUBLIC-API.md`
-**Contract:** `@agora-server/contract@^0.21.0` — **published to npm**, carries `Entity.public`
+**Contract:** `@agora-server/contract@^0.22.0` — **published to npm**, carries `Entity.public`
+(corrected 2026-07-19: `Entity.public` landed in **0.22.0**, not 0.21.0 — the field was committed *after* the 0.21.0 release tag)
 
 ---
 
@@ -161,7 +162,7 @@ refactor. We do not ship stub packages pretending to be shipped.
 always bundle, so a CJS build would be dead weight. It carries `main === module` (both pointing at
 `dist/esm`), which is how `scripts/verify-dist.mjs` detects ESM-only.
 
-**Dependencies.** `core`: `@agora-server/contract@^0.21.0`, `axios@^1.4.0`, `react` peer.
+**Dependencies.** `core`: `@agora-server/contract@^0.22.0`, `axios@^1.4.0`, `react` peer.
 `react-js`: `@agora-sdk/public-read-core` (`workspace:*`), `react`/`react-dom`/`@types/react` peers,
 plus a `copy:docs` script shipping `docs/PUBLIC-READ.md` (the web package is this repo's doc carrier
 by convention). Both mirror `social-core`'s `package.json` shape.
@@ -436,7 +437,7 @@ Updated:
 
 3. Root `README.md` — Features table row + Packages block line.
 4. `ARCHITECTURE.md` — a `subgraph` in the package graph + a `## public-read layers & seams` section.
-5. `STATUS.md` — entries under `## Built`, plus the contract version floor (`^0.21.0`).
+5. `STATUS.md` — entries under `## Built`, plus the contract version floor (`^0.22.0`).
 6. `CHANGELOG.md` — `### Added` bullets under `[Unreleased]`, same commit as the code.
 7. `CLAUDE.md` — the architecture section and the `build-all` package order, both of which spell out
    the package list in prose and would go stale otherwise.
