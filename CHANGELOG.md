@@ -21,6 +21,11 @@ All notable changes to Agora SDK Plus are documented here, following
   `by-foreign-id` — the walled route has it, the public one omits it deliberately, and honouring it
   anonymously would be a row-creation primitive.
 
+- **`@agora-sdk/public-read-core` — `<PublicReadProvider>` + `usePublicRead`.** Constructs and
+  memoizes the tokenless REST client. Takes no token prop and issues **no** request on mount (the
+  public surface has no transparency endpoint), so there is no loading gate to wait on. Renders both
+  with no `<ReplykeProvider>` in the tree and inside one without inheriting its token or boot latch.
+
 ### Fixed
 
 - **CI/Publish — typecheck failed with `Cannot find module '@agora-sdk/react-js'`.** A committed
