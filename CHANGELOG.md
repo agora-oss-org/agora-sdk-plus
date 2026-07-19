@@ -6,6 +6,8 @@ All notable changes to Agora SDK Plus are documented here, following
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-07-19
+
 ### Added
 
 - **`@agora-sdk/public-read-core` — new package: tokenless transport for the anonymous public surface.**
